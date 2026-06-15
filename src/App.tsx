@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import {
   Bar,
@@ -14,11 +14,20 @@ import {
   YAxis,
 } from 'recharts'
 import './App.css'
-
-type CropType = 'SD' | 'DN' | 'both'
-type AreaBasis = 'shelf' | 'floor'
-type Scenario = 'min' | 'avg' | 'max'
-type Triple = Record<Scenario, number>
+import type { AreaBasis, CropType, Scenario, Triple } from './types'
+import {
+  BENCHMARK_LEVEL_LABELS,
+  FIELD_HINTS,
+  getBenchmarkLevel,
+  HintLabel,
+  QrModal,
+  SetupWizard,
+  StickySummary,
+  Toast,
+  useIsMobileGuide,
+  useStickyVisible,
+  type WizardStep,
+} from './uiHelpers'
 
 type TripleField =
   | 'sdYieldPerPlant'
@@ -94,8 +103,8 @@ const SCENARIO_LABELS: Record<Scenario, string> = {
 }
 
 const BENCHMARKS = {
-  SD: { confirmed: [32, 40], ceiling: [40, 48], max: 60 },
-  DN: { confirmed: [34, 41], ceiling: [40, 60], max: 70 },
+  SD: { confirmed: [32, 40] as const, ceiling: [40, 48] as const, max: 60 },
+  DN: { confirmed: [34, 41] as const, ceiling: [40, 60] as const, max: 70 },
 }
 
 const DEFAULT_STATE: CalculatorState = {
@@ -575,17 +584,30 @@ interface TripleInputsProps {
   min: number
   max?: number
   step: number
+  hint?: string
+  clientMode?: boolean
   onChange: (scenario: Scenario, value: number) => void
 }
 
-function TripleInputs({ title, unit, values, min, max, step, onChange }: TripleInputsProps) {
+function TripleInputs({
+  title,
+  unit,
+  values,
+  min,
+  max,
+  step,
+  hint,
+  clientMode = false,
+  onChange,
+}: TripleInputsProps) {
+  const scenarios = clientMode ? (['avg'] as Scenario[]) : SCENARIOS
   return (
     <div className="triple-inputs">
       <p className="field-title">
-        {title} <span>{unit}</span>
+        <HintLabel label={title} hint={hint} /> <span>{unit}</span>
       </p>
-      <div className="triple-grid">
-        {SCENARIOS.map((scenario) => (
+      <div className={`triple-grid ${clientMode ? 'triple-grid-client' : ''}`}>
+        {scenarios.map((scenario) => (
           <label key={scenario} className="field triple-field">
             <span className="scenario-label">{SCENARIO_LABELS[scenario]}</span>
             <input
@@ -609,6 +631,7 @@ function TripleInputs({ title, unit, values, min, max, step, onChange }: TripleI
 
 function BenchmarkBar({ crop, value }: { crop: 'SD' | 'DN'; value: number }) {
   const benchmark = BENCHMARKS[crop]
+  const level = getBenchmarkLevel(crop, value, BENCHMARKS)
   const max = benchmark.max
   const toPercent = (raw: number): number => Math.min((raw / max) * 100, 100)
   const confirmedStart = toPercent(benchmark.confirmed[0])
@@ -618,7 +641,7 @@ function BenchmarkBar({ crop, value }: { crop: 'SD' | 'DN'; value: number }) {
   const marker = toPercent(value)
 
   return (
-    <div className="benchmark">
+    <div className={`benchmark benchmark-${level}`}>
       <div className="benchmark-scale">
         <div
           className="segment confirmed"
@@ -631,8 +654,8 @@ function BenchmarkBar({ crop, value }: { crop: 'SD' | 'DN'; value: number }) {
         <div className="marker" style={{ left: `${marker}%` }} />
       </div>
       <p>
-        Ориентир: подтверждено {benchmark.confirmed[0]}-{benchmark.confirmed[1]} · потолок{' '}
-        {benchmark.ceiling[0]}-{benchmark.ceiling[1]} кг/м²/год (поверхность)
+        {BENCHMARK_LEVEL_LABELS[level]} · ориентир: подтверждено {benchmark.confirmed[0]}-{benchmark.confirmed[1]} ·
+        потолок {benchmark.ceiling[0]}-{benchmark.ceiling[1]} кг/м²/год (поверхность)
       </p>
     </div>
   )
@@ -642,18 +665,23 @@ function ScenarioCards({
   crop,
   result,
   areaBasis,
+  clientMode = false,
 }: {
   crop: 'SD' | 'DN'
   result: CropResult
   areaBasis: AreaBasis
+  clientMode?: boolean
 }) {
   const areaLabel = areaBasis === 'shelf' ? 'поверхности' : 'пола'
+  const cards = clientMode ? (['avg'] as Scenario[]) : SCENARIOS
   return (
-    <div className="scenario-cards">
-      {SCENARIOS.map((scenario) => (
-        <article className={`scenario-card scenario-${scenario}`} key={scenario}>
+    <div className={`scenario-cards ${clientMode ? 'scenario-cards-client' : ''}`}>
+      {cards.map((scenario) => {
+        const level = getBenchmarkLevel(crop, result[scenario].marketShelfM2PerYear, BENCHMARKS)
+        return (
+        <article className={`scenario-card scenario-${scenario} benchmark-card-${level}`} key={scenario}>
           <h4>{SCENARIO_LABELS[scenario]}</h4>
-          <p className="scenario-main">
+          <p className={`scenario-main benchmark-value-${level}`}>
             {formatValue(result[scenario].marketMainM2PerYear, 1)}
             <span> кг/м² {areaLabel} / год</span>
           </p>
@@ -681,7 +709,7 @@ function ScenarioCards({
           )}
           <BenchmarkBar crop={crop} value={result[scenario].marketShelfM2PerYear} />
         </article>
-      ))}
+      )})}
     </div>
   )
 }
@@ -691,17 +719,19 @@ function ResultsTable({
   title,
   result,
   areaBasis,
+  clientMode = false,
 }: {
   crop: 'SD' | 'DN'
   title: string
   result: CropResult
   areaBasis: AreaBasis
+  clientMode?: boolean
 }) {
   return (
     <section className="result-card">
       <h3>{title}</h3>
-      <ScenarioCards crop={crop} result={result} areaBasis={areaBasis} />
-      <div className="table-wrap">
+      <ScenarioCards crop={crop} result={result} areaBasis={areaBasis} clientMode={clientMode} />
+      <div className={`table-wrap ${clientMode ? 'no-print-table' : ''}`}>
         <table>
           <thead>
             <tr>
@@ -739,10 +769,67 @@ function ResultsTable({
 }
 
 function App() {
-  const [state, setState] = useState<CalculatorState>(() => parseStateFromUrl())
+  const [state, setStateRaw] = useState<CalculatorState>(() => parseStateFromUrl())
+  const undoStack = useRef<CalculatorState[]>([])
+  const [canUndo, setCanUndo] = useState(false)
+  const [toast, setToast] = useState('')
   const [linkStatus, setLinkStatus] = useState('')
   const [calibrationStatus, setCalibrationStatus] = useState('Калибровка пока не выполнялась.')
   const [calendarScenario, setCalendarScenario] = useState<Scenario>('avg')
+  const [clientMode, setClientMode] = useState(() => localStorage.getItem('berryClientMode') === '1')
+  const [showQr, setShowQr] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(
+    () => !localStorage.getItem('berryWizardDone') && !window.location.search,
+  )
+  const [wizardStep, setWizardStep] = useState<WizardStep>(0)
+  const stickyVisible = useStickyVisible()
+  const isMobileGuide = useIsMobileGuide()
+
+  const showToast = useCallback((message: string) => {
+    setToast(message)
+    window.setTimeout(() => setToast(''), 3200)
+  }, [])
+
+  const setState = useCallback(
+    (updater: CalculatorState | ((prev: CalculatorState) => CalculatorState)) => {
+      setStateRaw((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater
+        if (next !== prev) {
+          undoStack.current = [...undoStack.current.slice(-24), prev]
+          setCanUndo(undoStack.current.length > 0)
+        }
+        return next
+      })
+    },
+    [],
+  )
+
+  const undo = useCallback(() => {
+    const previous = undoStack.current.pop()
+    if (!previous) return
+    setCanUndo(undoStack.current.length > 0)
+    setStateRaw(previous)
+    showToast('Отменено последнее изменение.')
+  }, [showToast])
+
+  useEffect(() => {
+    document.title = 'Калькулятор урожая клубники'
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem('berryClientMode', clientMode ? '1' : '0')
+  }, [clientMode])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        undo()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [undo])
 
   const sdResult = useMemo(() => calculateCrop(state, 'SD'), [state])
   const dnResult = useMemo(() => calculateCrop(state, 'DN'), [state])
@@ -912,10 +999,21 @@ function App() {
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href)
-      setLinkStatus('Ссылка с текущими параметрами успешно скопирована.')
+      setLinkStatus('')
+      showToast('Ссылка скопирована в буфер обмена.')
     } catch {
-      setLinkStatus('Не удалось скопировать ссылку.')
+      showToast('Не удалось скопировать ссылку.')
     }
+  }
+
+  const printReport = () => {
+    window.print()
+  }
+
+  const closeWizard = () => {
+    localStorage.setItem('berryWizardDone', '1')
+    setWizardOpen(false)
+    showToast('Настройка завершена. Результаты справа.')
   }
 
   const normalizeHeader = (raw: string): string => raw.toLowerCase().replace(/\s+/g, '').replace(/_/g, '')
@@ -1017,14 +1115,61 @@ function App() {
   }
 
   return (
-    <main className="app">
-      <header className="header">
+    <main className={`app ${clientMode ? 'client-mode' : ''}`}>
+      <Toast message={toast} />
+      <StickySummary
+        cropType={state.cropType}
+        areaBasis={state.areaBasis}
+        sdAvg={sdResult.avg.marketMainM2PerYear}
+        dnAvg={dnResult.avg.marketMainM2PerYear}
+        visible={stickyVisible}
+      />
+      {showQr && <QrModal url={window.location.href} onClose={() => setShowQr(false)} />}
+      {wizardOpen && (
+        <SetupWizard
+          step={wizardStep}
+          cropType={state.cropType}
+          areaBasis={state.areaBasis}
+          density={state.density}
+          tiers={state.tiers}
+          farmAreaM2={state.farmAreaM2}
+          onCropType={(cropType) => setState((prev) => ({ ...prev, cropType }))}
+          onAreaBasis={(areaBasis) => setState((prev) => ({ ...prev, areaBasis }))}
+          onDensity={(density) => updateCommonField('density', density)}
+          onTiers={(tiers) => updateCommonField('tiers', tiers)}
+          onFarmArea={(farmAreaM2) => updateCommonField('farmAreaM2', farmAreaM2)}
+          onPreset={applyQualityPreset}
+          onStep={setWizardStep}
+          onClose={closeWizard}
+        />
+      )}
+
+      <header className="header no-print">
         <div>
           <h1>Калькулятор урожайности клубники</h1>
           <p className="sub">
             Вертикальная ферма: детальный расчет валового, биологического и товарного урожая с настройкой сценариев,
             волн и рисков.
           </p>
+        </div>
+
+        <div className="header-tools">
+          <label className="client-toggle">
+            <input
+              type="checkbox"
+              checked={clientMode}
+              onChange={(event) => setClientMode(event.target.checked)}
+            />
+            Режим для клиента
+          </label>
+          <button type="button" className="ghost-btn" onClick={() => setWizardOpen(true)}>
+            Мастер
+          </button>
+          {canUndo && (
+            <button type="button" className="ghost-btn" onClick={undo} title="Ctrl+Z">
+              Отменить
+            </button>
+          )}
         </div>
 
         <div className="switchers">
@@ -1069,12 +1214,13 @@ function App() {
       </div>
 
       <section className="layout">
-        <aside className="panel">
+        <aside className="panel no-print-panel">
           <h2>Параметры</h2>
 
+          {!clientMode && (
           <section className="crop-block guide-block">
             <h3>Мануал: что означает каждая строка</h3>
-            <details open>
+            <details open={!isMobileGuide}>
               <summary>1) Базовая логика расчёта</summary>
               <p className="hint">
                 Валовый урожай строится из урожая с растения и числа циклов. Затем применяются коэффициенты потерь,
@@ -1177,10 +1323,11 @@ function App() {
               </p>
             </details>
           </section>
+          )}
 
           <div className="inputs-row">
             <label className="field">
-              <span>Плотность, раст/м² поверхности</span>
+              <HintLabel label="Плотность, раст/м² поверхности" hint={FIELD_HINTS.density} />
               <input
                 type="number"
                 min={1}
@@ -1191,7 +1338,7 @@ function App() {
               />
             </label>
             <label className="field">
-              <span>Число ярусов</span>
+              <HintLabel label="Число ярусов" hint={FIELD_HINTS.tiers} />
               <input
                 type="number"
                 min={1}
@@ -1205,7 +1352,7 @@ function App() {
 
           <div className="inputs-row">
             <label className="field">
-              <span>Полезная поверхность фермы, м²</span>
+              <HintLabel label="Полезная поверхность фермы, м²" hint={FIELD_HINTS.farmAreaM2} />
               <input
                 type="number"
                 min={1}
@@ -1214,8 +1361,9 @@ function App() {
                 onChange={(event) => updateCommonField('farmAreaM2', Number(event.target.value))}
               />
             </label>
+            {!clientMode && (
             <label className="field">
-              <span>Неопределённость модели, %: {state.uncertaintyPct.toFixed(0)}</span>
+              <HintLabel label={`Неопределённость модели, %: ${state.uncertaintyPct.toFixed(0)}`} hint={FIELD_HINTS.uncertaintyPct} />
               <input
                 type="range"
                 min={0}
@@ -1225,13 +1373,16 @@ function App() {
                 onChange={(event) => updateCommonField('uncertaintyPct', Number(event.target.value))}
               />
             </label>
+            )}
           </div>
 
           <section className="crop-block">
             <h3>Качество и товарность</h3>
+            {!clientMode && (
+            <>
             <div className="inputs-row">
               <label className="field">
-                <span>Коэффициент технологических потерь</span>
+                <HintLabel label="Коэффициент технологических потерь" hint={FIELD_HINTS.kLosses} />
                 <input
                   type="number"
                   min={0.3}
@@ -1242,7 +1393,7 @@ function App() {
                 />
               </label>
               <label className="field">
-                <span>Коэффициент рисков (болезни/вредители)</span>
+                <HintLabel label="Коэффициент рисков (болезни/вредители)" hint={FIELD_HINTS.kPests} />
                 <input
                   type="number"
                   min={0.3}
@@ -1254,7 +1405,7 @@ function App() {
               </label>
             </div>
             <label className="field">
-              <span>Доля товарной ягоды</span>
+              <HintLabel label="Доля товарной ягоды" hint={FIELD_HINTS.packout} />
               <input
                 type="number"
                 min={0.5}
@@ -1264,6 +1415,8 @@ function App() {
                 onChange={(event) => updateQualityField('packout', Number(event.target.value))}
               />
             </label>
+            </>
+            )}
             <p className="hint">
               Итог: коэффициент качества = {formatValue(coreFactor, 3)}, коэффициент товарного выхода ={' '}
               {formatValue(totalMarketFactor, 3)}
@@ -1287,6 +1440,8 @@ function App() {
               <TripleInputs
                 title="Выход с куста за цикл"
                 unit="кг"
+                hint={FIELD_HINTS.sdYield}
+                clientMode={clientMode}
                 values={state.sdYieldPerPlant}
                 min={0.1}
                 step={0.01}
@@ -1295,6 +1450,8 @@ function App() {
               <TripleInputs
                 title="Длина цикла КСД"
                 unit="мес"
+                hint={FIELD_HINTS.sdCycle}
+                clientMode={clientMode}
                 values={state.sdCycleMonths}
                 min={1}
                 step={0.1}
@@ -1310,6 +1467,8 @@ function App() {
               <TripleInputs
                 title="Выход с куста за цикл"
                 unit="кг"
+                hint={FIELD_HINTS.dnYield}
+                clientMode={clientMode}
                 values={state.dnYieldPerPlant}
                 min={0.1}
                 step={0.01}
@@ -1318,19 +1477,26 @@ function App() {
               <TripleInputs
                 title="Длина цикла НСД (отдельно для Мин/Средний/Макс)"
                 unit="мес"
+                hint={FIELD_HINTS.dnCycle}
+                clientMode={clientMode}
                 values={state.dnCycleMonths}
                 min={1}
                 step={0.1}
                 onChange={(scenario, value) => updateTripleField('dnCycleMonths', scenario, value)}
               />
+              {!clientMode && (
               <TripleInputs
                 title="Оборот между циклами НСД"
                 unit="мес"
+                hint={FIELD_HINTS.dnTurnaround}
                 values={state.dnTurnaroundMonths}
                 min={0}
                 step={0.1}
                 onChange={(scenario, value) => updateTripleField('dnTurnaroundMonths', scenario, value)}
               />
+              )}
+              {!clientMode && (
+              <>
               <label className="field checkbox-field">
                 <span>
                   <input
@@ -1369,8 +1535,11 @@ function App() {
                   Сумма ручного профиля сейчас: {formatValue(dnManualAnnualPlant, 2)} кг/раст/год (база для Avg).
                 </p>
               )}
-              {hasDnWarning && <p className="warning">Рекомендуемый порядок: Минимум ≤ Средний ≤ Максимум.</p>}
+              </>
+              )}
+              {!clientMode && hasDnWarning && <p className="warning">Рекомендуемый порядок: Минимум ≤ Средний ≤ Максимум.</p>}
 
+              {!clientMode && (
               <details>
                 <summary>Расширенные параметры НСД и волн</summary>
                 <TripleInputs
@@ -1416,9 +1585,11 @@ function App() {
                   onChange={(scenario, value) => updateTripleField('berryMassG', scenario, value)}
                 />
               </details>
+              )}
             </section>
           )}
 
+          {!clientMode && (
           <section className="crop-block">
             <h3>Калибровка по фактическим данным (файл)</h3>
             <p className="hint">
@@ -1430,6 +1601,7 @@ function App() {
             </label>
             <p className="status">{calibrationStatus}</p>
           </section>
+          )}
 
           <div className="actions panel-actions">
             <button type="button" onClick={() => setState(DEFAULT_STATE)}>
@@ -1441,16 +1613,29 @@ function App() {
             <button type="button" onClick={copyLink}>
               Скопировать ссылку
             </button>
+            <button type="button" onClick={() => setShowQr(true)}>
+              QR-код
+            </button>
+            <button type="button" onClick={printReport}>
+              Печать / PDF
+            </button>
           </div>
           {linkStatus && <p className="status">{linkStatus}</p>}
         </aside>
 
-        <section className="results">
+        <section className="results print-area">
+          <div className="print-only print-header">
+            <h2>Калькулятор урожая клубники — отчёт</h2>
+            <p>
+              Плотность {state.density} раст/м² · ярусов {state.tiers} · площадь {state.farmAreaM2} м² · база:{' '}
+              {state.areaBasis === 'shelf' ? 'поверхность' : 'пол'}
+            </p>
+          </div>
           {(state.cropType === 'SD' || state.cropType === 'both') && (
-            <ResultsTable crop="SD" title="Результаты КСД" result={sdResult} areaBasis={state.areaBasis} />
+            <ResultsTable crop="SD" title="Результаты КСД" result={sdResult} areaBasis={state.areaBasis} clientMode={clientMode} />
           )}
           {(state.cropType === 'DN' || state.cropType === 'both') && (
-            <ResultsTable crop="DN" title="Результаты НСД" result={dnResult} areaBasis={state.areaBasis} />
+            <ResultsTable crop="DN" title="Результаты НСД" result={dnResult} areaBasis={state.areaBasis} clientMode={clientMode} />
           )}
 
           <section className="chart-card">
@@ -1473,6 +1658,7 @@ function App() {
             </div>
           </section>
 
+          {!clientMode && (
           <section className="chart-card">
             <h3>Диапазон неопределенности 10/50/90% (товарный кг/м² {state.areaBasis === 'shelf' ? 'поверхности' : 'пола'} в год)</h3>
             <div className="chart-wrap">
@@ -1494,7 +1680,9 @@ function App() {
               50%={formatValue(uncertaintyDN.p50, 1)}, 90%={formatValue(uncertaintyDN.p90, 1)}.
             </p>
           </section>
+          )}
 
+          {!clientMode && (state.cropType === 'DN' || state.cropType === 'both') && (
           <section className="chart-card">
             <h3>Календарь НСД по волнам (товарный кг/м² поверхности в месяц)</h3>
             <div className="toggle compact">
@@ -1526,7 +1714,9 @@ function App() {
                 : 'Это распределение урожая по месяцам года с учётом фаз цикла и волн.'}
             </p>
           </section>
+          )}
 
+          {!clientMode && (state.cropType === 'DN' || state.cropType === 'both') && (
           <section className="chart-card">
             <h3>
               {state.dnManualProfileEnabled
@@ -1564,6 +1754,7 @@ function App() {
                 : 'График показывает неравномерный сбор в пределах цикла: установление, пик 1-й/2-й/3-й волны и спад.'}
             </p>
           </section>
+          )}
 
           <section className="sources-card">
             <h3>Источники и доверие</h3>
@@ -1581,7 +1772,7 @@ function App() {
         </section>
       </section>
 
-      <div className="mobile-actions">
+      <div className="mobile-actions no-print">
         <button type="button" onClick={() => setState(DEFAULT_STATE)}>
           Сбросить
         </button>
@@ -1590,6 +1781,12 @@ function App() {
         </button>
         <button type="button" onClick={copyLink}>
           Ссылка
+        </button>
+        <button type="button" onClick={() => setShowQr(true)}>
+          QR
+        </button>
+        <button type="button" onClick={printReport}>
+          PDF
         </button>
       </div>
     </main>
