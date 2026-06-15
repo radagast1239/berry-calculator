@@ -881,28 +881,6 @@ function App() {
     })
   }
 
-  const applyQualityPreset = (preset: 'ideal' | 'confirmed' | 'conservative') => {
-    setState((prev) => {
-      if (preset === 'ideal') {
-        return { ...prev, kLosses: 1, kPests: 1, packout: 1 }
-      }
-      if (preset === 'confirmed') {
-        return {
-          ...prev,
-          kLosses: 0.98,
-          kPests: 0.98,
-          packout: 0.94,
-        }
-      }
-      return {
-        ...prev,
-        kLosses: 0.95,
-        kPests: 0.95,
-        packout: 0.9,
-      }
-    })
-  }
-
   const updateTripleField = (field: TripleField, scenario: Scenario, value: number) => {
     setState((prev) => ({
       ...prev,
@@ -1138,7 +1116,12 @@ function App() {
           onDensity={(density) => updateCommonField('density', density)}
           onTiers={(tiers) => updateCommonField('tiers', tiers)}
           onFarmArea={(farmAreaM2) => updateCommonField('farmAreaM2', farmAreaM2)}
-          onPreset={applyQualityPreset}
+          kLosses={state.kLosses}
+          kPests={state.kPests}
+          packout={state.packout}
+          onKLosses={(value) => updateQualityField('kLosses', value)}
+          onKPests={(value) => updateQualityField('kPests', value)}
+          onPackout={(value) => updateQualityField('packout', value)}
           onStep={setWizardStep}
           onClose={closeWizard}
         />
@@ -1193,7 +1176,7 @@ function App() {
                 className={state.areaBasis === basis ? 'active' : ''}
                 onClick={() => setState((prev) => ({ ...prev, areaBasis: basis }))}
               >
-                {basis === 'shelf' ? 'База: поверхность' : 'База: пол'}
+                {basis === 'shelf' ? 'База: поверхность' : 'База: полезная посевная площадь, м²'}
               </button>
             ))}
           </div>
@@ -1244,7 +1227,7 @@ function App() {
                   <strong>Число ярусов:</strong> влияет только на метрику «на м² пола».
                 </li>
                 <li>
-                  <strong>Полезная площадь фермы:</strong> масштабирует итог на всю ферму (кг/год, кг/мес).
+                  <strong>Посевная полезная площадь фермы:</strong> масштабирует итог на всю ферму (кг/год, кг/мес).
                 </li>
                 <li>
                   <strong>Неопределённость %:</strong> ширина диапазона «нижняя/средняя/верхняя оценка 10/50/90%»;
@@ -1352,7 +1335,7 @@ function App() {
 
           <div className="inputs-row">
             <label className="field">
-              <HintLabel label="Полезная поверхность фермы, м²" hint={FIELD_HINTS.farmAreaM2} />
+              <HintLabel label="Посевная полезная площадь фермы, м²" hint={FIELD_HINTS.farmAreaM2} />
               <input
                 type="number"
                 min={1}
@@ -1378,8 +1361,6 @@ function App() {
 
           <section className="crop-block">
             <h3>Качество и товарность</h3>
-            {!clientMode && (
-            <>
             <div className="inputs-row">
               <label className="field">
                 <HintLabel label="Коэффициент технологических потерь" hint={FIELD_HINTS.kLosses} />
@@ -1415,23 +1396,10 @@ function App() {
                 onChange={(event) => updateQualityField('packout', Number(event.target.value))}
               />
             </label>
-            </>
-            )}
             <p className="hint">
               Итог: коэффициент качества = {formatValue(coreFactor, 3)}, коэффициент товарного выхода ={' '}
               {formatValue(totalMarketFactor, 3)}
             </p>
-            <div className="presets">
-              <button type="button" onClick={() => applyQualityPreset('ideal')}>
-                Идеал
-              </button>
-              <button type="button" onClick={() => applyQualityPreset('confirmed')}>
-                Подтверждённый
-              </button>
-              <button type="button" onClick={() => applyQualityPreset('conservative')}>
-                Консервативный
-              </button>
-            </div>
           </section>
 
           {(state.cropType === 'SD' || state.cropType === 'both') && (
@@ -1628,7 +1596,7 @@ function App() {
             <h2>Калькулятор урожая клубники — отчёт</h2>
             <p>
               Плотность {state.density} раст/м² · ярусов {state.tiers} · площадь {state.farmAreaM2} м² · база:{' '}
-              {state.areaBasis === 'shelf' ? 'поверхность' : 'пол'}
+              {state.areaBasis === 'shelf' ? 'поверхность' : 'полезная посевная площадь'}
             </p>
           </div>
           {(state.cropType === 'SD' || state.cropType === 'both') && (

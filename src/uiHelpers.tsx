@@ -29,7 +29,7 @@ export function getBenchmarkLevel(
 export const FIELD_HINTS: Record<string, string> = {
   density: 'Число растений на 1 м² полезной поверхности ярусов. Линейно масштабирует урожай.',
   tiers: 'Сколько ярусов в конструкции. Влияет на пересчёт «кг/м² пола».',
-  farmAreaM2: 'Полезная площадь посадки для расчёта урожая всей фермы (кг/год и кг/мес).',
+  farmAreaM2: 'Посевная полезная площадь фермы для расчёта урожая всей площадки (кг/год и кг/мес).',
   uncertaintyPct: 'Ширина диапазона 10/50/90%. На средний сценарий не влияет.',
   kLosses: 'Доля урожая, теряемая из-за брака, пересорта и технологических потерь.',
   kPests: 'Снижение урожая из-за болезней, вредителей и стресса растений.',
@@ -127,12 +127,17 @@ export function SetupWizard({
   density,
   tiers,
   farmAreaM2,
+  kLosses,
+  kPests,
+  packout,
   onCropType,
   onAreaBasis,
   onDensity,
   onTiers,
   onFarmArea,
-  onPreset,
+  onKLosses,
+  onKPests,
+  onPackout,
   onStep,
   onClose,
 }: {
@@ -142,12 +147,17 @@ export function SetupWizard({
   density: number
   tiers: number
   farmAreaM2: number
+  kLosses: number
+  kPests: number
+  packout: number
   onCropType: (v: CropType) => void
   onAreaBasis: (v: AreaBasis) => void
   onDensity: (v: number) => void
   onTiers: (v: number) => void
   onFarmArea: (v: number) => void
-  onPreset: (p: 'ideal' | 'confirmed' | 'conservative') => void
+  onKLosses: (v: number) => void
+  onKPests: (v: number) => void
+  onPackout: (v: number) => void
   onStep: (s: WizardStep) => void
   onClose: () => void
 }) {
@@ -179,7 +189,7 @@ export function SetupWizard({
                   className={areaBasis === basis ? 'active' : ''}
                   onClick={() => onAreaBasis(basis)}
                 >
-                  {basis === 'shelf' ? 'м² поверхности' : 'м² пола'}
+                  {basis === 'shelf' ? 'м² поверхности' : 'полезная посевная площадь, м²'}
                 </button>
               ))}
             </div>
@@ -198,7 +208,7 @@ export function SetupWizard({
               <input type="number" min={1} max={30} value={tiers} onChange={(e) => onTiers(Number(e.target.value))} />
             </label>
             <label className="field">
-              <HintLabel label="Полезная поверхность, м²" hint={FIELD_HINTS.farmAreaM2} />
+              <HintLabel label="Посевная полезная площадь фермы, м²" hint={FIELD_HINTS.farmAreaM2} />
               <input type="number" min={1} step={0.1} value={farmAreaM2} onChange={(e) => onFarmArea(Number(e.target.value))} />
             </label>
           </>
@@ -206,18 +216,40 @@ export function SetupWizard({
 
         {step === 2 && (
           <>
-            <p className="hint">Выберите пресет качества. Детали можно изменить позже в расширенном режиме.</p>
-            <div className="presets wizard-presets">
-              <button type="button" onClick={() => onPreset('ideal')}>
-                Идеал
-              </button>
-              <button type="button" onClick={() => onPreset('confirmed')}>
-                Подтверждённый
-              </button>
-              <button type="button" onClick={() => onPreset('conservative')}>
-                Консервативный
-              </button>
-            </div>
+            <p className="hint">Укажите коэффициенты качества вручную.</p>
+            <label className="field">
+              <HintLabel label="Коэффициент технологических потерь" hint={FIELD_HINTS.kLosses} />
+              <input
+                type="number"
+                min={0.3}
+                max={1}
+                step={0.01}
+                value={kLosses}
+                onChange={(e) => onKLosses(Number(e.target.value))}
+              />
+            </label>
+            <label className="field">
+              <HintLabel label="Коэффициент рисков (болезни/вредители)" hint={FIELD_HINTS.kPests} />
+              <input
+                type="number"
+                min={0.3}
+                max={1}
+                step={0.01}
+                value={kPests}
+                onChange={(e) => onKPests(Number(e.target.value))}
+              />
+            </label>
+            <label className="field">
+              <HintLabel label="Доля товарной ягоды" hint={FIELD_HINTS.packout} />
+              <input
+                type="number"
+                min={0.5}
+                max={1}
+                step={0.01}
+                value={packout}
+                onChange={(e) => onPackout(Number(e.target.value))}
+              />
+            </label>
           </>
         )}
 
