@@ -15,6 +15,8 @@ import {
 } from 'recharts'
 import './App.css'
 import type { AreaBasis, CropType, Scenario, Triple } from './types'
+import { PdfExportDialog } from './PdfExportDialog'
+import { exportSectionsToPdf } from './pdfExport'
 import {
   BENCHMARK_LEVEL_LABELS,
   FIELD_HINTS,
@@ -782,6 +784,8 @@ function App() {
     () => !localStorage.getItem('berryWizardDone') && !window.location.search,
   )
   const [wizardStep, setWizardStep] = useState<WizardStep>(0)
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
+  const [pdfExporting, setPdfExporting] = useState(false)
   const stickyVisible = useStickyVisible()
   const isMobileGuide = useIsMobileGuide()
 
@@ -813,7 +817,7 @@ function App() {
   }, [showToast])
 
   useEffect(() => {
-    document.title = 'Калькулятор урожая клубники'
+    document.title = 'Калькулятор урожая клубники · Daogreen'
   }, [])
 
   useEffect(() => {
@@ -984,8 +988,44 @@ function App() {
     }
   }
 
-  const printReport = () => {
-    window.print()
+  const cropTypeLabel =
+    state.cropType === 'both' ? 'КСД + НСД' : state.cropType === 'SD' ? 'КСД' : 'НСД'
+
+  const runPdfExport = async (sectionIds: string[]) => {
+    setPdfExporting(true)
+    try {
+      const date = new Date().toLocaleDateString('ru-RU')
+      await exportSectionsToPdf(sectionIds, {
+        title: 'Калькулятор урожая клубники · Daogreen',
+        subtitle: 'Daogreen — проектирование и запуск вертикальных ферм',
+        date,
+        lines: [
+          { label: 'Культура', value: cropTypeLabel },
+          {
+            label: 'База расчёта',
+            value: state.areaBasis === 'shelf' ? 'м² поверхности' : 'полезная посевная площадь',
+          },
+          { label: 'Плотность', value: `${state.density} раст/м²` },
+          { label: 'Ярусов', value: String(state.tiers) },
+          { label: 'Площадь фермы', value: `${state.farmAreaM2} м²` },
+          {
+            label: 'КСД (средний)',
+            value: `${formatValue(sdResult.avg.marketMainM2PerYear, 1)} кг/м²/год`,
+          },
+          {
+            label: 'НСД (средний)',
+            value: `${formatValue(dnResult.avg.marketMainM2PerYear, 1)} кг/м²/год`,
+          },
+        ],
+      })
+      setPdfDialogOpen(false)
+      showToast('PDF сохранён на устройство.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось сформировать PDF.'
+      showToast(message)
+    } finally {
+      setPdfExporting(false)
+    }
   }
 
   const closeWizard = () => {
@@ -1103,6 +1143,14 @@ function App() {
         visible={stickyVisible}
       />
       {showQr && <QrModal url={window.location.href} onClose={() => setShowQr(false)} />}
+      <PdfExportDialog
+        open={pdfDialogOpen}
+        cropType={state.cropType}
+        clientMode={clientMode}
+        exporting={pdfExporting}
+        onClose={() => setPdfDialogOpen(false)}
+        onExport={runPdfExport}
+      />
       {wizardOpen && (
         <SetupWizard
           step={wizardStep}
@@ -1130,9 +1178,9 @@ function App() {
       <header className="header no-print">
         <div>
           <h1>Калькулятор урожайности клубники</h1>
-          <p className="sub">
-            Вертикальная ферма: детальный расчет валового, биологического и товарного урожая с настройкой сценариев,
-            волн и рисков.
+          <p className="sub brand-line">
+            <strong>Daogreen</strong> — проектирование и запуск вертикальных ферм. Расчёт валового, биологического
+            и товарного урожая КСД и НСД с настройкой сценариев, волн и рисков.
           </p>
         </div>
 
@@ -1202,109 +1250,153 @@ function App() {
 
           {!clientMode && (
           <section className="crop-block guide-block">
-            <h3>Мануал: что означает каждая строка</h3>
+            <h3>Инструкция Daogreen</h3>
+            <p className="hint guide-intro">
+              Краткое руководство по полям калькулятора. Значок <strong>?</strong> у строки дублирует подсказку.
+            </p>
             <details open={!isMobileGuide}>
               <summary>1) Базовая логика расчёта</summary>
               <p className="hint">
-                Валовый урожай строится из урожая с растения и числа циклов. Затем применяются коэффициенты потерь,
-                рисков и доля товарной ягоды, чтобы получить товарный урожай.
+                Валовый урожай строится из выхода с растения за цикл и числа циклов в год. Затем применяются
+                коэффициенты потерь, рисков и доля товарной ягоды — получается товарный урожай.
               </p>
               <p className="hint">
                 Формула: <code>товарный = валовый × коэффициент_потерь × коэффициент_рисков × доля_товарной_ягоды</code>
               </p>
               <p className="hint">
-                Свет, опыление, питание и климат считаются идеальными и постоянными, поэтому не участвуют в
-                коэффициентах.
+                Свет, опыление, питание и климат в модели считаются идеальными и не задаются отдельными коэффициентами.
+              </p>
+              <p className="hint">
+                <strong>База расчёта:</strong> «м² поверхности» — урожай на полезную поверхность ярусов; «полезная
+                посевная площадь» — пересчёт через ярусы на площадь пола фермы.
               </p>
             </details>
             <details>
-              <summary>2) Общие поля (верхние строки)</summary>
+              <summary>2) Режимы и управление</summary>
               <ul className="guide-list">
                 <li>
-                  <strong>Плотность, раст/м²:</strong> линейно увеличивает/уменьшает урожай на м².
+                  <strong>Режим для клиента:</strong> упрощённый вид — только средний сценарий и основные графики.
                 </li>
                 <li>
-                  <strong>Число ярусов:</strong> влияет только на метрику «на м² пола».
+                  <strong>Мастер:</strong> пошаговая первичная настройка культуры, площади и коэффициентов качества.
                 </li>
                 <li>
-                  <strong>Посевная полезная площадь фермы:</strong> масштабирует итог на всю ферму (кг/год, кг/мес).
+                  <strong>Отменить (Ctrl+Z):</strong> возврат к предыдущему состоянию параметров.
                 </li>
                 <li>
-                  <strong>Неопределённость %:</strong> ширина диапазона «нижняя/средняя/верхняя оценка 10/50/90%»;
-                  базовый расчёт при этом не меняется.
+                  <strong>Скопировать ссылку / QR-код:</strong> сохранить и передать текущий расчёт (все значения в URL).
+                </li>
+                <li>
+                  <strong>Выгрузка PDF:</strong> выбор разделов и скачивание файла без печати.
+                </li>
+                <li>
+                  <strong>Экспорт данных:</strong> таблица результатов в CSV.
                 </li>
               </ul>
             </details>
             <details>
-              <summary>3) Качество и товарность (что можно настраивать)</summary>
+              <summary>3) Общие поля</summary>
               <ul className="guide-list">
                 <li>
-                  <strong>Коэффициент технологических потерь:</strong> снижает урожай из-за брака и потерь.
+                  <strong>Плотность, раст/м² поверхности:</strong> линейно масштабирует урожай на м².
                 </li>
                 <li>
-                  <strong>Коэффициент рисков:</strong> снижает урожай из-за болезней и вредителей.
+                  <strong>Число ярусов:</strong> влияет на пересчёт «кг/м² пола» и на базу «полезная посевная площадь».
                 </li>
                 <li>
-                  <strong>Доля товарной ягоды:</strong> какая часть биологического урожая реально идет в продажу.
+                  <strong>Посевная полезная площадь фермы, м²:</strong> масштабирует итог на всю площадку (кг/год, кг/мес).
+                </li>
+                <li>
+                  <strong>Неопределённость %:</strong> ширина диапазона P10/P50/P90; средний сценарий при этом не меняется.
                 </li>
               </ul>
             </details>
             <details>
-              <summary>4) КСД/НСД и строки Минимум/Средний/Максимум</summary>
+              <summary>4) Качество и товарность</summary>
               <ul className="guide-list">
                 <li>
-                  <strong>Выход с куста за цикл:</strong> основа урожая сценария.
+                  <strong>Коэффициент технологических потерь:</strong> брак, пересорт, технологические потери.
                 </li>
                 <li>
-                  <strong>Длина цикла:</strong> через неё считается количество циклов в год.
+                  <strong>Коэффициент рисков:</strong> болезни, вредители, стресс растений.
                 </li>
                 <li>
-                  <strong>Оборот НСД:</strong> увеличивает паузу между циклами и снижает циклы в год.
+                  <strong>Доля товарной ягоды:</strong> какая часть биологического урожая идёт в продажу.
+                </li>
+              </ul>
+              <p className="hint">Все три коэффициента задаются вручную — вводите свои значения под конкретный проект.</p>
+            </details>
+            <details>
+              <summary>5) КСД и НСД: сценарии Минимум / Средний / Максимум</summary>
+              <ul className="guide-list">
+                <li>
+                  <strong>Выход с куста за цикл:</strong> основа урожая сценария, кг с растения.
+                </li>
+                <li>
+                  <strong>Длина цикла:</strong> через неё считается число циклов в год.
+                </li>
+                <li>
+                  <strong>Оборот НСД:</strong> пауза между циклами; увеличивает длительность цикла и снижает циклы в год.
+                </li>
+                <li>
+                  <strong>Расширенные параметры НСД:</strong> волны плодоношения, установление, доли волн — для календаря и
+                  профиля внутри цикла (справочно, на итог в ручном режиме не влияют).
                 </li>
               </ul>
             </details>
             <details>
-              <summary>5) Ручной профиль НСД по месяцам (12 строк)</summary>
+              <summary>6) Ручной помесячный профиль НСД</summary>
               <ul className="guide-list">
                 <li>
-                  <strong>Янв...Дек:</strong> кг с 1 растения за конкретный месяц года.
+                  <strong>Янв…Дек:</strong> кг с одного растения за конкретный месяц года.
                 </li>
                 <li>
                   <strong>0 в месяце:</strong> месяц без сбора.
                 </li>
                 <li>
-                  <strong>Сумма 12 месяцев:</strong> годовой урожай с 1 растения в среднем сценарии.
+                  <strong>Сумма 12 месяцев:</strong> годовой урожай с растения в среднем сценарии.
                 </li>
                 <li>
-                  <strong>Минимум/Максимум в ручном режиме:</strong> профиль автоматически масштабируется относительно
-                  «Среднего» сценария.
+                  <strong>Минимум / Максимум:</strong> профиль масштабируется относительно «Среднего» сценария.
                 </li>
               </ul>
             </details>
             <details>
-              <summary>6) Графики и проверка результата</summary>
+              <summary>7) Результаты, графики и ориентиры</summary>
               <ul className="guide-list">
                 <li>
-                  <strong>Сравнение КСД и НСД:</strong> годовой товарный урожай на м² поверхности.
+                  <strong>Карточки сценариев:</strong> товарный урожай на выбранной базе площади; цветовая шкала — сравнение
+                  с отраслевыми ориентирами (iFarm, Artechno и др.).
                 </li>
                 <li>
-                  <strong>Нижняя/средняя/верхняя оценка (10/50/90%):</strong> диапазон риска и разброса результата.
+                  <strong>Сравнение КСД и НСД:</strong> товарный урожай, кг/м² поверхности в год.
                 </li>
                 <li>
-                  <strong>Календарь НСД:</strong> как урожай распределяется по месяцам года.
+                  <strong>Диапазон 10/50/90%:</strong> разброс при заданной неопределённости модели.
                 </li>
                 <li>
-                  <strong>Профиль волны:</strong> форма волны внутри цикла или ваш ручной профиль.
+                  <strong>Календарь НСД:</strong> распределение урожая по месяцам года.
+                </li>
+                <li>
+                  <strong>Профиль волны:</strong> форма сбора внутри цикла или ваш ручной помесячный профиль.
                 </li>
               </ul>
             </details>
             <details>
-              <summary>7) Калибровка по файлу данных</summary>
+              <summary>8) Выгрузка PDF</summary>
               <p className="hint">
-                Формат строк: <code>тип;сценарий;факт_кг_м2_поверхности_год</code>. Калибровка подстраивает
-                коэффициенты под ваши фактические урожаи.
+                Кнопка «Выгрузка PDF» открывает список разделов: титул, результаты, графики, источники. Можно выбрать
+                пресет «Краткий», «Для клиента» или «Полный». Файл сохраняется на устройство, диалог печати не используется.
               </p>
             </details>
+            <details>
+              <summary>9) Калибровка по фактическим данным</summary>
+              <p className="hint">
+                Формат CSV: <code>тип;сценарий;факт_кг_м2_поверхности_год</code> (пример:{' '}
+                <code>НСД;средний;38.5</code>). Калибровка подстраивает коэффициенты под ваши фактические урожаи.
+              </p>
+            </details>
+            <p className="hint guide-footer">Daogreen · daogreen.ru · модель даёт ориентиры, не заменяет пилотный прогон.</p>
           </section>
           )}
 
@@ -1584,8 +1676,8 @@ function App() {
             <button type="button" onClick={() => setShowQr(true)}>
               QR-код
             </button>
-            <button type="button" onClick={printReport}>
-              Печать / PDF
+            <button type="button" onClick={() => setPdfDialogOpen(true)}>
+              Выгрузка PDF
             </button>
           </div>
           {linkStatus && <p className="status">{linkStatus}</p>}
@@ -1593,20 +1685,24 @@ function App() {
 
         <section className="results print-area">
           <div className="print-only print-header">
-            <h2>Калькулятор урожая клубники — отчёт</h2>
+            <h2>Калькулятор урожая клубники — отчёт · Daogreen</h2>
             <p>
               Плотность {state.density} раст/м² · ярусов {state.tiers} · площадь {state.farmAreaM2} м² · база:{' '}
               {state.areaBasis === 'shelf' ? 'поверхность' : 'полезная посевная площадь'}
             </p>
           </div>
           {(state.cropType === 'SD' || state.cropType === 'both') && (
-            <ResultsTable crop="SD" title="Результаты КСД" result={sdResult} areaBasis={state.areaBasis} clientMode={clientMode} />
+            <div id="pdf-sec-results-sd">
+              <ResultsTable crop="SD" title="Результаты КСД" result={sdResult} areaBasis={state.areaBasis} clientMode={clientMode} />
+            </div>
           )}
           {(state.cropType === 'DN' || state.cropType === 'both') && (
-            <ResultsTable crop="DN" title="Результаты НСД" result={dnResult} areaBasis={state.areaBasis} clientMode={clientMode} />
+            <div id="pdf-sec-results-dn">
+              <ResultsTable crop="DN" title="Результаты НСД" result={dnResult} areaBasis={state.areaBasis} clientMode={clientMode} />
+            </div>
           )}
 
-          <section className="chart-card">
+          <section className="chart-card" id="pdf-sec-chart-compare">
             <h3>Сравнение КСД и НСД (товарный урожай, кг/м² поверхности в год)</h3>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height={290}>
@@ -1627,7 +1723,7 @@ function App() {
           </section>
 
           {!clientMode && (
-          <section className="chart-card">
+          <section className="chart-card" id="pdf-sec-chart-uncertainty">
             <h3>Диапазон неопределенности 10/50/90% (товарный кг/м² {state.areaBasis === 'shelf' ? 'поверхности' : 'пола'} в год)</h3>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height={280}>
@@ -1651,7 +1747,7 @@ function App() {
           )}
 
           {!clientMode && (state.cropType === 'DN' || state.cropType === 'both') && (
-          <section className="chart-card">
+          <section className="chart-card" id="pdf-sec-chart-dn-calendar">
             <h3>Календарь НСД по волнам (товарный кг/м² поверхности в месяц)</h3>
             <div className="toggle compact">
               {SCENARIOS.map((scenario) => (
@@ -1685,7 +1781,7 @@ function App() {
           )}
 
           {!clientMode && (state.cropType === 'DN' || state.cropType === 'both') && (
-          <section className="chart-card">
+          <section className="chart-card" id="pdf-sec-chart-dn-profile">
             <h3>
               {state.dnManualProfileEnabled
                 ? 'Ручной профиль НСД по месяцам (товарный кг/м² поверхности в месяц)'
@@ -1724,7 +1820,7 @@ function App() {
           </section>
           )}
 
-          <section className="sources-card">
+          <section className="sources-card" id="pdf-sec-sources">
             <h3>Источники и доверие</h3>
             <ul>
               <li>iFarm Berries: структура КСД/НСД, потолочные и подтверждённые урожаи.</li>
@@ -1753,7 +1849,7 @@ function App() {
         <button type="button" onClick={() => setShowQr(true)}>
           QR
         </button>
-        <button type="button" onClick={printReport}>
+        <button type="button" onClick={() => setPdfDialogOpen(true)}>
           PDF
         </button>
       </div>
