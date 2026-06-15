@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import type { AreaBasis, CropType } from './types'
+import { AREA_BASIS_BUTTON_LABELS, AREA_BASIS_GENITIVE } from './types'
 
 export type BenchmarkLevel = 'low' | 'ok' | 'warn' | 'high'
 
@@ -79,7 +80,7 @@ export function StickySummary({
   visible: boolean
 }) {
   if (!visible) return null
-  const area = areaBasis === 'shelf' ? 'поверхности' : 'пола'
+  const area = AREA_BASIS_GENITIVE[areaBasis]
   return (
     <div className="sticky-summary" aria-hidden={!visible}>
       <div className="sticky-summary-inner">
@@ -189,7 +190,7 @@ export function SetupWizard({
                   className={areaBasis === basis ? 'active' : ''}
                   onClick={() => onAreaBasis(basis)}
                 >
-                  {basis === 'shelf' ? 'м² поверхности' : 'полезная посевная площадь, м²'}
+                  {AREA_BASIS_BUTTON_LABELS[basis].replace(/^База: /, '')}
                 </button>
               ))}
             </div>

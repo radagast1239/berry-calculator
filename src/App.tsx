@@ -15,6 +15,7 @@ import {
 } from 'recharts'
 import './App.css'
 import type { AreaBasis, CropType, Scenario, Triple } from './types'
+import { AREA_BASIS_BUTTON_LABELS, AREA_BASIS_GENITIVE, AREA_BASIS_SHORT } from './types'
 import { PdfExportDialog } from './PdfExportDialog'
 import { exportSectionsToPdf } from './pdfExport'
 import {
@@ -674,7 +675,7 @@ function ScenarioCards({
   areaBasis: AreaBasis
   clientMode?: boolean
 }) {
-  const areaLabel = areaBasis === 'shelf' ? 'поверхности' : 'пола'
+  const areaLabel = AREA_BASIS_GENITIVE[areaBasis]
   const cards = clientMode ? (['avg'] as Scenario[]) : SCENARIOS
   return (
     <div className={`scenario-cards ${clientMode ? 'scenario-cards-client' : ''}`}>
@@ -764,7 +765,7 @@ function ResultsTable({
         </table>
       </div>
       <p className="hint">
-        В карточках основной показатель показывается для базы: {areaBasis === 'shelf' ? 'м² поверхности' : 'м² пола'}.
+        В карточках основной показатель показывается для базы: {AREA_BASIS_GENITIVE[areaBasis]}.
       </p>
     </section>
   )
@@ -1003,7 +1004,7 @@ function App() {
           { label: 'Культура', value: cropTypeLabel },
           {
             label: 'База расчёта',
-            value: state.areaBasis === 'shelf' ? 'м² поверхности' : 'полезная посевная площадь',
+            value: AREA_BASIS_SHORT[state.areaBasis],
           },
           { label: 'Плотность', value: `${state.density} раст/м²` },
           { label: 'Ярусов', value: String(state.tiers) },
@@ -1224,7 +1225,7 @@ function App() {
                 className={state.areaBasis === basis ? 'active' : ''}
                 onClick={() => setState((prev) => ({ ...prev, areaBasis: basis }))}
               >
-                {basis === 'shelf' ? 'База: поверхность' : 'База: полезная посевная площадь, м²'}
+                {AREA_BASIS_BUTTON_LABELS[basis]}
               </button>
             ))}
           </div>
@@ -1267,8 +1268,8 @@ function App() {
                 Свет, опыление, питание и климат в модели считаются идеальными и не задаются отдельными коэффициентами.
               </p>
               <p className="hint">
-                <strong>База расчёта:</strong> «м² поверхности» — урожай на полезную поверхность ярусов; «полезная
-                посевная площадь» — пересчёт через ярусы на площадь пола фермы.
+                <strong>База расчёта:</strong> «полезная посевная площадь» — урожай на площадь посадки ярусов;
+                «площадь по полу» — пересчёт через число ярусов на площадь пола фермы.
               </p>
             </details>
             <details>
@@ -1301,7 +1302,7 @@ function App() {
                   <strong>Плотность, раст/м² поверхности:</strong> линейно масштабирует урожай на м².
                 </li>
                 <li>
-                  <strong>Число ярусов:</strong> влияет на пересчёт «кг/м² пола» и на базу «полезная посевная площадь».
+                  <strong>Число ярусов:</strong> влияет на пересчёт «площадь по полу» и на базу «полезная посевная площадь».
                 </li>
                 <li>
                   <strong>Посевная полезная площадь фермы, м²:</strong> масштабирует итог на всю площадку (кг/год, кг/мес).
@@ -1688,7 +1689,7 @@ function App() {
             <h2>Калькулятор урожая клубники — отчёт · Daogreen</h2>
             <p>
               Плотность {state.density} раст/м² · ярусов {state.tiers} · площадь {state.farmAreaM2} м² · база:{' '}
-              {state.areaBasis === 'shelf' ? 'поверхность' : 'полезная посевная площадь'}
+              {AREA_BASIS_SHORT[state.areaBasis]}
             </p>
           </div>
           {(state.cropType === 'SD' || state.cropType === 'both') && (
@@ -1724,7 +1725,7 @@ function App() {
 
           {!clientMode && (
           <section className="chart-card" id="pdf-sec-chart-uncertainty">
-            <h3>Диапазон неопределенности 10/50/90% (товарный кг/м² {state.areaBasis === 'shelf' ? 'поверхности' : 'пола'} в год)</h3>
+            <h3>Диапазон неопределенности 10/50/90% (товарный кг/м² {AREA_BASIS_GENITIVE[state.areaBasis]} в год)</h3>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={percentileChartData}>
