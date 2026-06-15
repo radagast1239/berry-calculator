@@ -12,27 +12,6 @@ async function loadPdfLibs(): Promise<{ html2canvas: Html2CanvasFn; jsPDF: JsPdf
 const PDF_W_PX = 794
 const PDF_SCALE = 2
 const PDF_MARGIN_MM = 12
-const LOGO_PATH = `${import.meta.env.BASE_URL}daogreen-logo.svg`
-
-let pdfLogoDataUrl: string | null = null
-
-async function loadPdfLogoDataUrl(): Promise<string | null> {
-  if (pdfLogoDataUrl) return pdfLogoDataUrl
-  try {
-    const response = await fetch(LOGO_PATH)
-    if (!response.ok) return null
-    const blob = await response.blob()
-    pdfLogoDataUrl = await new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result))
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
-    return pdfLogoDataUrl
-  } catch {
-    return null
-  }
-}
 
 export type PdfSectionGroup = 'general' | 'results' | 'charts'
 
@@ -182,14 +161,11 @@ function prepareCloneForPdf(root: HTMLElement) {
   })
 }
 
-function buildCover(meta: PdfExportMeta, logoSrc?: string | null): HTMLElement {
+function buildCover(meta: PdfExportMeta): HTMLElement {
   const wrap = document.createElement('div')
   wrap.className = 'pdf-page-block pdf-cover-block'
-  const logoHtml = logoSrc
-    ? `<img class="pdf-cover-logo" src="${escapeHtml(logoSrc)}" alt="Daogreen" crossorigin="anonymous">`
-    : '<p class="pdf-cover-brand">Daogreen</p>'
   wrap.innerHTML = `
-    ${logoHtml}
+    <p class="pdf-cover-brand">Daogreen</p>
     <h1 class="pdf-cover-title">${escapeHtml(meta.title)}</h1>
     <p class="pdf-cover-sub">${escapeHtml(meta.subtitle)}</p>
     <p class="pdf-cover-date">${escapeHtml(meta.date)}</p>
@@ -317,8 +293,8 @@ function appendCanvasToPdf(
   }
 }
 
-function blockForSection(sec: PdfSectionDef, meta: PdfExportMeta, logoSrc?: string | null): HTMLElement | null {
-  if (sec.kind === 'cover') return buildCover(meta, logoSrc)
+function blockForSection(sec: PdfSectionDef, meta: PdfExportMeta): HTMLElement | null {
+  if (sec.kind === 'cover') return buildCover(meta)
   if (!sec.selector) return null
   const el = document.querySelector(sec.selector)
   if (!el || !(el instanceof HTMLElement)) return null
@@ -333,7 +309,6 @@ function blockForSection(sec: PdfSectionDef, meta: PdfExportMeta, logoSrc?: stri
 
 export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExportMeta): Promise<void> {
   const { html2canvas, jsPDF } = await loadPdfLibs()
-  const logoSrc = await loadPdfLogoDataUrl()
   const ordered = sortSectionIds(selectedIds)
   if (!ordered.length) throw new Error('Выберите хотя бы один раздел.')
 
@@ -349,7 +324,7 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
   for (const id of ordered) {
     const sec = secMap.get(id)
     if (!sec) continue
-    const block = blockForSection(sec, meta, logoSrc)
+    const block = blockForSection(sec, meta)
     if (!block) continue
     const wrapped = sec.kind === 'cover' ? block : wrapWithTitle(block, sec.label)
     const canvas = await captureWrapped(html2canvas, wrapped)

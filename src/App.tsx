@@ -69,8 +69,6 @@ const BENCHMARKS = {
   DN: { confirmed: [34, 41] as const, ceiling: [40, 60] as const, max: 70 },
 }
 
-const LOGO_SRC = `${import.meta.env.BASE_URL}daogreen-logo.svg`
-
 const DEFAULT_STATE: CalculatorState = {
   cropType: 'both',
   areaBasis: 'shelf',
@@ -1134,7 +1132,7 @@ function App() {
   }
 
   return (
-    <main className={`app ${clientMode ? 'client-mode' : ''}`}>
+    <main className={`app ${clientMode ? 'client-mode' : ''} ${stickyVisible ? 'has-sticky-summary' : ''}`}>
       <Toast message={toast} />
       <StickySummary
         cropType={state.cropType}
@@ -1177,23 +1175,12 @@ function App() {
       )}
 
       <header className="header no-print">
-        <div className="header-main">
-          <a
-            className="brand-lockup"
-            href="https://daogreen.ru"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Daogreen — вертикальные фермы"
-          >
-            <img src={LOGO_SRC} alt="Daogreen" className="brand-logo" />
-          </a>
-          <div className="header-copy">
-            <h1>Калькулятор урожайности клубники</h1>
-            <p className="sub brand-line">
-              <strong>Daogreen</strong> — проектирование и запуск вертикальных ферм. Расчёт валового, биологического
-              и товарного урожая КСД и НСД с настройкой сценариев, волн и рисков.
-            </p>
-          </div>
+        <div>
+          <h1>Калькулятор урожайности клубники</h1>
+          <p className="sub brand-line">
+            <strong>Daogreen</strong> — проектирование и запуск вертикальных ферм. Расчёт валового, биологического
+            и товарного урожая КСД и НСД с настройкой сценариев, волн и рисков.
+          </p>
         </div>
 
         <div className="header-tools">
@@ -1325,7 +1312,8 @@ function App() {
                   <strong>Посевная полезная площадь фермы, м²:</strong> масштабирует итог на всю площадку (кг/год, кг/мес).
                 </li>
                 <li>
-                  <strong>Неопределённость %:</strong> ширина диапазона P10/P50/P90; средний сценарий при этом не меняется.
+                  <strong>Неопределённость %:</strong> ширина коридора на графике 10/50/90% (симуляция разброса).
+                  Сценарии Мин/Средний/Макс и основные карточки не меняет.
                 </li>
               </ul>
             </details>
@@ -1455,6 +1443,7 @@ function App() {
               />
             </label>
             {!clientMode && (
+            <>
             <label className="field">
               <HintLabel label={`Неопределённость модели, %: ${state.uncertaintyPct.toFixed(0)}`} hint={FIELD_HINTS.uncertaintyPct} />
               <input
@@ -1466,6 +1455,13 @@ function App() {
                 onChange={(event) => updateCommonField('uncertaintyPct', Number(event.target.value))}
               />
             </label>
+            <p className="hint uncertainty-hint">
+              Это не сценарии «Мин/Средний/Макс» — они задаются вручную выше. Неопределённость управляет только
+              графиком <strong>10% / 50% / 90%</strong>: при {state.uncertaintyPct}% модель многократно случайно
+              варьирует урожай с куста, длину цикла и коэффициенты качества в пределах ваших диапазонов и показывает,
+              насколько может разъехаться итог. 0% — узкий коридор вокруг среднего; 30% — широкий, «осторожный».
+            </p>
+            </>
             )}
           </div>
 
@@ -1861,6 +1857,10 @@ function App() {
               </ResponsiveContainer>
             </div>
             <p className="hint">
+              Монте-Карло: случайные прогоны в пределах ваших Мин/Макс и неопределённости {state.uncertaintyPct}%.
+              Нижняя 10% — осторожная оценка, 50% — медиана, 90% — оптимистичная. Карточки сценариев выше — отдельно,
+              они задаются вручную.
+              <br />
               КСД: 10%={formatValue(uncertaintySD.p10, 1)}, 50%={formatValue(uncertaintySD.p50, 1)},
               90%={formatValue(uncertaintySD.p90, 1)}. НСД: 10%={formatValue(uncertaintyDN.p10, 1)},
               50%={formatValue(uncertaintyDN.p50, 1)}, 90%={formatValue(uncertaintyDN.p90, 1)}.

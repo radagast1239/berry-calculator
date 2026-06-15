@@ -468,29 +468,6 @@
   background: linear-gradient(140deg, #ffffff 0%, #eef2ff 100%);
 }
 
-.header-main {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  flex: 1 1 280px;
-  min-width: 0;
-}
-
-.brand-lockup {
-  flex: 0 0 auto;
-  line-height: 0;
-}
-
-.brand-logo {
-  display: block;
-  height: 44px;
-  width: auto;
-}
-
-.header-copy {
-  min-width: 0;
-}
-
 .sensitivity-table {
   width: 100%;
   border-collapse: collapse;
@@ -513,11 +490,10 @@
   font-weight: 600;
 }
 
-.pdf-staging .pdf-cover-logo {
-  display: block;
-  height: 48px;
-  width: auto;
-  margin-bottom: 12px;
+.uncertainty-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .sub {
@@ -587,9 +563,21 @@
 
 .panel {
   padding: 16px;
-  height: fit-content;
   position: sticky;
   top: 14px;
+  align-self: start;
+  max-height: calc(100vh - 28px);
+  max-height: calc(100dvh - 28px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+.has-sticky-summary .panel {
+  top: 52px;
+  max-height: calc(100vh - 66px);
+  max-height: calc(100dvh - 66px);
 }
 
 .results {
@@ -933,6 +921,8 @@ thead {
 
   .panel {
     position: static;
+    max-height: none;
+    overflow-y: visible;
   }
 
   .scenario-cards {
