@@ -12,6 +12,27 @@ async function loadPdfLibs(): Promise<{ html2canvas: Html2CanvasFn; jsPDF: JsPdf
 const PDF_W_PX = 794
 const PDF_SCALE = 2
 const PDF_MARGIN_MM = 12
+const LOGO_PATH = `${import.meta.env.BASE_URL}daogreen-logo.svg`
+
+let pdfLogoDataUrl: string | null = null
+
+async function loadPdfLogoDataUrl(): Promise<string | null> {
+  if (pdfLogoDataUrl) return pdfLogoDataUrl
+  try {
+    const response = await fetch(LOGO_PATH)
+    if (!response.ok) return null
+    const blob = await response.blob()
+    pdfLogoDataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+    return pdfLogoDataUrl
+  } catch {
+    return null
+  }
+}
 
 export type PdfSectionGroup = 'general' | 'results' | 'charts'
 
@@ -59,6 +80,18 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
     advanced: true,
   },
   { id: 'sources', label: 'Источники и доверие', group: 'general', selector: '#pdf-sec-sources' },
+  {
+    id: 'chart-sensitivity',
+    label: 'Чувствительность к плотности и урожаю',
+    group: 'charts',
+    selector: '#pdf-sec-chart-sensitivity',
+  },
+  {
+    id: 'chart-farm-monthly',
+    label: 'Помесячный сбор с фермы',
+    group: 'charts',
+    selector: '#pdf-sec-chart-farm-monthly',
+  },
 ]
 
 export const PDF_GROUP_LABELS: Record<PdfSectionGroup, string> = {
@@ -68,8 +101,8 @@ export const PDF_GROUP_LABELS: Record<PdfSectionGroup, string> = {
 }
 
 export const PDF_PRESETS = {
-  client: ['cover', 'results-sd', 'results-dn', 'chart-compare', 'sources'],
-  brief: ['cover', 'results-sd', 'results-dn', 'chart-compare'],
+  client: ['cover', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly', 'sources'],
+  brief: ['cover', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
   full: PDF_SECTIONS.map((s) => s.id),
 }
 
@@ -136,6 +169,9 @@ function prepareCloneForPdf(root: HTMLElement) {
   root.querySelectorAll('.toggle button, .no-print').forEach((el) => {
     ;(el as HTMLElement).style.display = 'none'
   })
+  root.querySelectorAll('input[type="range"]').forEach((el) => {
+    ;(el as HTMLElement).style.display = 'none'
+  })
   root.querySelectorAll('.no-print-table').forEach((el) => {
     el.classList.remove('no-print-table')
   })
@@ -146,11 +182,14 @@ function prepareCloneForPdf(root: HTMLElement) {
   })
 }
 
-function buildCover(meta: PdfExportMeta): HTMLElement {
+function buildCover(meta: PdfExportMeta, logoSrc?: string | null): HTMLElement {
   const wrap = document.createElement('div')
   wrap.className = 'pdf-page-block pdf-cover-block'
+  const logoHtml = logoSrc
+    ? `<img class="pdf-cover-logo" src="${escapeHtml(logoSrc)}" alt="Daogreen" crossorigin="anonymous">`
+    : '<p class="pdf-cover-brand">Daogreen</p>'
   wrap.innerHTML = `
-    <p class="pdf-cover-brand">Daogreen</p>
+    ${logoHtml}
     <h1 class="pdf-cover-title">${escapeHtml(meta.title)}</h1>
     <p class="pdf-cover-sub">${escapeHtml(meta.subtitle)}</p>
     <p class="pdf-cover-date">${escapeHtml(meta.date)}</p>
@@ -278,8 +317,8 @@ function appendCanvasToPdf(
   }
 }
 
-function blockForSection(sec: PdfSectionDef, meta: PdfExportMeta): HTMLElement | null {
-  if (sec.kind === 'cover') return buildCover(meta)
+function blockForSection(sec: PdfSectionDef, meta: PdfExportMeta, logoSrc?: string | null): HTMLElement | null {
+  if (sec.kind === 'cover') return buildCover(meta, logoSrc)
   if (!sec.selector) return null
   const el = document.querySelector(sec.selector)
   if (!el || !(el instanceof HTMLElement)) return null
@@ -294,6 +333,7 @@ function blockForSection(sec: PdfSectionDef, meta: PdfExportMeta): HTMLElement |
 
 export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExportMeta): Promise<void> {
   const { html2canvas, jsPDF } = await loadPdfLibs()
+  const logoSrc = await loadPdfLogoDataUrl()
   const ordered = sortSectionIds(selectedIds)
   if (!ordered.length) throw new Error('Выберите хотя бы один раздел.')
 
@@ -309,7 +349,7 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
   for (const id of ordered) {
     const sec = secMap.get(id)
     if (!sec) continue
-    const block = blockForSection(sec, meta)
+    const block = blockForSection(sec, meta, logoSrc)
     if (!block) continue
     const wrapped = sec.kind === 'cover' ? block : wrapWithTitle(block, sec.label)
     const canvas = await captureWrapped(html2canvas, wrapped)

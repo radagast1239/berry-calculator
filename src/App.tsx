@@ -16,6 +16,9 @@ import {
 import './App.css'
 import type { AreaBasis, CropType, Scenario, Triple } from './types'
 import { AREA_BASIS_BUTTON_LABELS, AREA_BASIS_GENITIVE, AREA_BASIS_SHORT } from './types'
+import type { CalculatorState, CropResult } from './calculatorTypes'
+import { migrateCalculatorState, MODEL_VERSION, parseModelVersion } from './modelVersion'
+import { buildSensitivityLines } from './sensitivity'
 import { PdfExportDialog } from './PdfExportDialog'
 import { exportSectionsToPdf } from './pdfExport'
 import {
@@ -46,50 +49,6 @@ type TripleField =
 
 type QualityField = 'kLosses' | 'kPests' | 'packout'
 
-interface CalculatorState {
-  cropType: CropType
-  areaBasis: AreaBasis
-  density: number
-  tiers: number
-  farmAreaM2: number
-  kLosses: number
-  kPests: number
-  packout: number
-  uncertaintyPct: number
-  sdYieldPerPlant: Triple
-  sdCycleMonths: Triple
-  dnYieldPerPlant: Triple
-  dnCycleMonths: Triple
-  dnTurnaroundMonths: Triple
-  dnWaves: Triple
-  dnEstablishMonths: Triple
-  dnWave1Share: Triple
-  dnWave2Share: Triple
-  dnManualProfileEnabled: boolean
-  dnManualMonthlyPlantYield: number[]
-  berryMassG: Triple
-}
-
-interface ScenarioResult {
-  cyclesPerYear: number
-  grossPlantPerYear: number
-  grossShelfM2PerCycle: number
-  grossShelfM2PerYear: number
-  grossFloorM2PerYear: number
-  bioShelfM2PerYear: number
-  marketShelfM2PerYear: number
-  marketFloorM2PerYear: number
-  marketMainM2PerYear: number
-  marketMainM2PerMonth: number
-  farmMarketAnnualKg: number
-  farmMarketMonthlyKg: number
-  productiveMonths: number | null
-  productiveMonthMarketKg: number | null
-  productiveMonthError: string | null
-}
-
-type CropResult = Record<Scenario, ScenarioResult>
-
 interface PercentileResult {
   p10: number
   p50: number
@@ -109,6 +68,8 @@ const BENCHMARKS = {
   SD: { confirmed: [32, 40] as const, ceiling: [40, 48] as const, max: 60 },
   DN: { confirmed: [34, 41] as const, ceiling: [40, 60] as const, max: 70 },
 }
+
+const LOGO_SRC = `${import.meta.env.BASE_URL}daogreen-logo.svg`
 
 const DEFAULT_STATE: CalculatorState = {
   cropType: 'both',
@@ -192,6 +153,7 @@ const parseMonthlyProfile = (raw: string | null, fallback: number[]): number[] =
 
 const toSearchParams = (state: CalculatorState): URLSearchParams => {
   const params = new URLSearchParams()
+  params.set('v', String(MODEL_VERSION))
   params.set('cropType', state.cropType)
   params.set('areaBasis', state.areaBasis)
   params.set('density', String(state.density))
@@ -231,6 +193,7 @@ const toSearchParams = (state: CalculatorState): URLSearchParams => {
 
 const parseStateFromUrl = (): CalculatorState => {
   const params = new URLSearchParams(window.location.search)
+  const modelVersion = parseModelVersion(params)
   const cropTypeRaw = params.get('cropType')
   const areaBasisRaw = params.get('areaBasis')
 
@@ -243,7 +206,7 @@ const parseStateFromUrl = (): CalculatorState => {
   const legacyReality = parseNumber(params, 'realityFactor', 1, 0.3, 1)
   const legacyPerFactor = roundTo(Math.sqrt(legacyReality), 3)
 
-  return {
+  const parsed: CalculatorState = {
     cropType,
     areaBasis,
     density: parseNumber(params, 'density', DEFAULT_STATE.density, 1, 90),
@@ -306,6 +269,8 @@ const parseStateFromUrl = (): CalculatorState => {
         }
       : {}),
   }
+
+  return migrateCalculatorState(parsed, modelVersion)
 }
 
 const isOrdered = (value: Triple): boolean => value.min <= value.avg && value.avg <= value.max
@@ -787,6 +752,7 @@ function App() {
   const [wizardStep, setWizardStep] = useState<WizardStep>(0)
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
   const [pdfExporting, setPdfExporting] = useState(false)
+  const [sensitivityPct, setSensitivityPct] = useState(10)
   const stickyVisible = useStickyVisible()
   const isMobileGuide = useIsMobileGuide()
 
@@ -861,6 +827,40 @@ function App() {
     () => buildDnCycleWaveProfile(state, calendarScenario),
     [state, calendarScenario],
   )
+
+  const sensitivityLines = useMemo(
+    () => buildSensitivityLines(state, sensitivityPct, calculateCrop),
+    [state, sensitivityPct],
+  )
+
+  const farmMonthlyData = useMemo(() => {
+    const area = state.farmAreaM2
+    const sdMonthlyShelf = sdResult.avg.marketShelfM2PerYear / 12
+    return MONTH_LABELS.map((month, index) => {
+      const row: Record<string, string | number> = { month }
+      if (state.cropType === 'SD' || state.cropType === 'both') {
+        row.КСД = roundTo(sdMonthlyShelf * area, 1)
+      }
+      if (state.cropType === 'DN' || state.cropType === 'both') {
+        row.НСД = roundTo(dnCalendar[index] * area, 1)
+      }
+      return row
+    })
+  }, [state.cropType, state.farmAreaM2, sdResult, dnCalendar])
+
+  const peakFarmMonth = useMemo(() => {
+    let bestMonth = MONTH_LABELS[0]
+    let bestKg = 0
+    farmMonthlyData.forEach((row) => {
+      const total =
+        (typeof row.КСД === 'number' ? row.КСД : 0) + (typeof row.НСД === 'number' ? row.НСД : 0)
+      if (total > bestKg) {
+        bestKg = total
+        bestMonth = String(row.month)
+      }
+    })
+    return { month: bestMonth, kg: bestKg }
+  }, [farmMonthlyData])
 
   useEffect(() => {
     const nextUrl = `${window.location.pathname}?${toSearchParams(state).toString()}`
@@ -1177,12 +1177,23 @@ function App() {
       )}
 
       <header className="header no-print">
-        <div>
-          <h1>Калькулятор урожайности клубники</h1>
-          <p className="sub brand-line">
-            <strong>Daogreen</strong> — проектирование и запуск вертикальных ферм. Расчёт валового, биологического
-            и товарного урожая КСД и НСД с настройкой сценариев, волн и рисков.
-          </p>
+        <div className="header-main">
+          <a
+            className="brand-lockup"
+            href="https://daogreen.ru"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Daogreen — вертикальные фермы"
+          >
+            <img src={LOGO_SRC} alt="Daogreen" className="brand-logo" />
+          </a>
+          <div className="header-copy">
+            <h1>Калькулятор урожайности клубники</h1>
+            <p className="sub brand-line">
+              <strong>Daogreen</strong> — проектирование и запуск вертикальных ферм. Расчёт валового, биологического
+              и товарного урожая КСД и НСД с настройкой сценариев, волн и рисков.
+            </p>
+          </div>
         </div>
 
         <div className="header-tools">
@@ -1289,6 +1300,12 @@ function App() {
                 </li>
                 <li>
                   <strong>Выгрузка PDF:</strong> выбор разделов и скачивание файла без печати.
+                </li>
+                <li>
+                  <strong>Чувствительность:</strong> таблица «что если» при ±% к плотности и урожаю с куста.
+                </li>
+                <li>
+                  <strong>Помесячный сбор с фермы:</strong> сколько кг товарной ягоды снимается с площадки по месяцам.
                 </li>
                 <li>
                   <strong>Экспорт данных:</strong> таблица результатов в CSV.
@@ -1721,6 +1738,110 @@ function App() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+          </section>
+
+          <section className="chart-card" id="pdf-sec-chart-sensitivity">
+            <h3>Чувствительность к плотности и урожаю (средний сценарий)</h3>
+            <label className="field">
+              <span>Диапазон отклонения: ±{sensitivityPct}%</span>
+              <input
+                type="range"
+                min={5}
+                max={20}
+                step={1}
+                value={sensitivityPct}
+                onChange={(event) => setSensitivityPct(Number(event.target.value))}
+              />
+            </label>
+            <div className="table-wrap">
+              <table className="sensitivity-table">
+                <thead>
+                  <tr>
+                    <th>Вариант</th>
+                    {(state.cropType === 'SD' || state.cropType === 'both') && (
+                      <>
+                        <th>КСД, кг/м²/год</th>
+                        <th>КСД, кг/год фермы</th>
+                      </>
+                    )}
+                    {(state.cropType === 'DN' || state.cropType === 'both') && (
+                      <>
+                        <th>НСД, кг/м²/год</th>
+                        <th>НСД, кг/год фермы</th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sensitivityLines.map((line) => (
+                    <tr key={line.id} className={line.id === 'base' ? 'sensitivity-base' : ''}>
+                      <td>{line.label}</td>
+                      {(state.cropType === 'SD' || state.cropType === 'both') && (
+                        <>
+                          <td>{formatValue(line.sd, 1)}</td>
+                          <td>{formatValue(line.sdFarmKg, 0)}</td>
+                        </>
+                      )}
+                      {(state.cropType === 'DN' || state.cropType === 'both') && (
+                        <>
+                          <td>{formatValue(line.dn, 1)}</td>
+                          <td>{formatValue(line.dnFarmKg, 0)}</td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="hint">
+              Показывает, как меняется товарный урожай при отклонении плотности и/или выхода с куста на выбранный
+              процент. База: {AREA_BASIS_SHORT[state.areaBasis]}, площадь фермы {formatValue(state.farmAreaM2, 1)} м².
+            </p>
+          </section>
+
+          <section className="chart-card" id="pdf-sec-chart-farm-monthly">
+            <h3>Помесячный сбор с фермы, кг (товарный)</h3>
+            {(state.cropType === 'DN' || state.cropType === 'both') && (
+              <div className="toggle compact">
+                {SCENARIOS.map((scenario) => (
+                  <button
+                    key={scenario}
+                    type="button"
+                    className={calendarScenario === scenario ? 'active' : ''}
+                    onClick={() => setCalendarScenario(scenario)}
+                  >
+                    {SCENARIO_LABELS[scenario]}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="chart-wrap">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={farmMonthlyData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip
+                    formatter={(value) => [`${formatValue(Number(value), 1)} кг`, '']}
+                    labelFormatter={(label) => `Месяц: ${label}`}
+                  />
+                  <Legend />
+                  {(state.cropType === 'SD' || state.cropType === 'both') && (
+                    <Bar dataKey="КСД" fill="#ec4899" name="КСД, кг с фермы" />
+                  )}
+                  {(state.cropType === 'DN' || state.cropType === 'both') && (
+                    <Bar dataKey="НСД" fill="#4f46e5" name="НСД, кг с фермы" />
+                  )}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="hint">
+              КСД: равномерный сбор по месяцам. НСД: по календарю волн. Пик суммарного сбора:{' '}
+              <strong>
+                {peakFarmMonth.month} — {formatValue(peakFarmMonth.kg, 0)} кг
+              </strong>{' '}
+              при площади {formatValue(state.farmAreaM2, 1)} м².
+            </p>
           </section>
 
           {!clientMode && (
