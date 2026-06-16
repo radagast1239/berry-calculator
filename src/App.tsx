@@ -1120,7 +1120,7 @@ function App() {
               <button type="button" onClick={() => setCompareSortsOpen((open) => !open)}>
                 {compareSortsOpen ? 'Скрыть сравнение' : 'Сравнить сорта'}
               </button>
-              <button type="button" className="primary" onClick={handleAddSort}>
+              <button type="button" className="btn-add-sort primary" onClick={handleAddSort}>
                 ➕ Добавить свой сорт
               </button>
             </div>
