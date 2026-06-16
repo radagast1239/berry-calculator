@@ -1,10 +1,8 @@
-import type { AreaBasis, CropType, Triple } from './types'
+import type { CropType, Triple } from './types'
 
 export interface CalculatorState {
   cropType: CropType
-  areaBasis: AreaBasis
   density: number
-  tiers: number
   farmAreaM2: number
   kLosses: number
   kPests: number
@@ -29,12 +27,10 @@ export interface ScenarioResult {
   grossPlantPerYear: number
   grossShelfM2PerCycle: number
   grossShelfM2PerYear: number
-  grossFloorM2PerYear: number
   bioShelfM2PerYear: number
   marketShelfM2PerYear: number
-  marketFloorM2PerYear: number
-  marketMainM2PerYear: number
-  marketMainM2PerMonth: number
+  marketM2PerYear: number
+  marketM2PerMonth: number
   farmMarketAnnualKg: number
   farmMarketMonthlyKg: number
   productiveMonths: number | null

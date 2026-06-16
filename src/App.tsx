@@ -14,11 +14,12 @@ import {
   YAxis,
 } from 'recharts'
 import './App.css'
-import type { AreaBasis, CropType, Scenario, Triple } from './types'
-import { AREA_BASIS_BUTTON_LABELS, AREA_BASIS_GENITIVE, AREA_BASIS_SHORT } from './types'
+import type { CropType, Scenario, Triple } from './types'
 import type { CalculatorState, CropResult } from './calculatorTypes'
 import { migrateCalculatorState, MODEL_VERSION, parseModelVersion } from './modelVersion'
 import { buildSensitivityLines } from './sensitivity'
+import { BerryEconPanel } from './BerryEconPanel'
+import { DEFAULT_BERRY_ECON, type BerryEconState } from './berryEcon'
 import { PdfExportDialog } from './PdfExportDialog'
 import { exportSectionsToPdf } from './pdfExport'
 import {
@@ -71,9 +72,7 @@ const BENCHMARKS = {
 
 const DEFAULT_STATE: CalculatorState = {
   cropType: 'both',
-  areaBasis: 'shelf',
   density: 20,
-  tiers: 8,
   farmAreaM2: 1,
   kLosses: 1,
   kPests: 1,
@@ -153,9 +152,7 @@ const toSearchParams = (state: CalculatorState): URLSearchParams => {
   const params = new URLSearchParams()
   params.set('v', String(MODEL_VERSION))
   params.set('cropType', state.cropType)
-  params.set('areaBasis', state.areaBasis)
   params.set('density', String(state.density))
-  params.set('tiers', String(state.tiers))
   params.set('farmAreaM2', String(state.farmAreaM2))
   params.set('kLosses', String(state.kLosses))
   params.set('kPests', String(state.kPests))
@@ -193,22 +190,18 @@ const parseStateFromUrl = (): CalculatorState => {
   const params = new URLSearchParams(window.location.search)
   const modelVersion = parseModelVersion(params)
   const cropTypeRaw = params.get('cropType')
-  const areaBasisRaw = params.get('areaBasis')
 
   const cropType: CropType =
     cropTypeRaw === 'SD' || cropTypeRaw === 'DN' || cropTypeRaw === 'both'
       ? cropTypeRaw
       : DEFAULT_STATE.cropType
-  const areaBasis: AreaBasis = areaBasisRaw === 'floor' ? 'floor' : 'shelf'
 
   const legacyReality = parseNumber(params, 'realityFactor', 1, 0.3, 1)
   const legacyPerFactor = roundTo(Math.sqrt(legacyReality), 3)
 
   const parsed: CalculatorState = {
     cropType,
-    areaBasis,
     density: parseNumber(params, 'density', DEFAULT_STATE.density, 1, 90),
-    tiers: parseNumber(params, 'tiers', DEFAULT_STATE.tiers, 1, 30),
     farmAreaM2: parseNumber(params, 'farmAreaM2', DEFAULT_STATE.farmAreaM2, 1),
     kLosses: normalizeFactor(
       parseNumber(
@@ -310,14 +303,11 @@ const calculateCrop = (state: CalculatorState, crop: 'SD' | 'DN'): CropResult =>
     const grossShelfM2PerCycle = raw.grossShelfM2PerCycle
     const grossShelfM2PerYear = raw.grossShelfM2PerYear
     const grossPlantPerYear = state.density > 0 ? grossShelfM2PerYear / state.density : 0
-    const grossFloorM2PerYear = grossShelfM2PerYear * state.tiers
     const coreFactor = getCoreFactor(state)
     const bioShelfM2PerYear = grossShelfM2PerYear * coreFactor
     const marketShelfM2PerYear = bioShelfM2PerYear * state.packout
-    const marketFloorM2PerYear = marketShelfM2PerYear * state.tiers
-    const marketMainM2PerYear =
-      state.areaBasis === 'shelf' ? marketShelfM2PerYear : marketFloorM2PerYear
-    const marketMainM2PerMonth = marketMainM2PerYear / 12
+    const marketM2PerYear = marketShelfM2PerYear
+    const marketM2PerMonth = marketM2PerYear / 12
     const farmMarketAnnualKg = marketShelfM2PerYear * state.farmAreaM2
     const farmMarketMonthlyKg = farmMarketAnnualKg / 12
 
@@ -355,12 +345,10 @@ const calculateCrop = (state: CalculatorState, crop: 'SD' | 'DN'): CropResult =>
       grossPlantPerYear,
       grossShelfM2PerCycle,
       grossShelfM2PerYear,
-      grossFloorM2PerYear,
       bioShelfM2PerYear,
       marketShelfM2PerYear,
-      marketFloorM2PerYear,
-      marketMainM2PerYear,
-      marketMainM2PerMonth,
+      marketM2PerYear,
+      marketM2PerMonth,
       farmMarketAnnualKg,
       farmMarketMonthlyKg,
       productiveMonths,
@@ -432,8 +420,7 @@ const simulatePercentiles = (
     const kPests = fluctuate(state.kPests, uncertainty)
     const packout = clamp(state.packout * (1 + (Math.random() * 2 - 1) * uncertainty * 0.7), 0.4, 1)
     const marketShelf = grossShelf * kLosses * kPests * packout
-    const marketMain = state.areaBasis === 'shelf' ? marketShelf : marketShelf * state.tiers
-    values.push(marketMain)
+    values.push(marketShelf)
   }
 
   values.sort((a, b) => a - b)
@@ -630,15 +617,12 @@ function BenchmarkBar({ crop, value }: { crop: 'SD' | 'DN'; value: number }) {
 function ScenarioCards({
   crop,
   result,
-  areaBasis,
   clientMode = false,
 }: {
   crop: 'SD' | 'DN'
   result: CropResult
-  areaBasis: AreaBasis
   clientMode?: boolean
 }) {
-  const areaLabel = AREA_BASIS_GENITIVE[areaBasis]
   const cards = clientMode ? (['avg'] as Scenario[]) : SCENARIOS
   return (
     <div className={`scenario-cards ${clientMode ? 'scenario-cards-client' : ''}`}>
@@ -648,18 +632,12 @@ function ScenarioCards({
         <article className={`scenario-card scenario-${scenario} benchmark-card-${level}`} key={scenario}>
           <h4>{SCENARIO_LABELS[scenario]}</h4>
           <p className={`scenario-main benchmark-value-${level}`}>
-            {formatValue(result[scenario].marketMainM2PerYear, 1)}
-            <span> кг/м² {areaLabel} / год</span>
+            {formatValue(result[scenario].marketM2PerYear, 1)}
+            <span> кг/м² полезной посевной площади / год</span>
           </p>
           <p className="scenario-sub">
-            Товарный: {formatValue(result[scenario].marketMainM2PerMonth, 1)} кг/м²/мес · валовый:{' '}
-            {formatValue(
-              areaBasis === 'shelf'
-                ? result[scenario].grossShelfM2PerYear
-                : result[scenario].grossFloorM2PerYear,
-              1,
-            )}{' '}
-            кг/м²/год
+            Товарный: {formatValue(result[scenario].marketM2PerMonth, 1)} кг/м²/мес · валовый:{' '}
+            {formatValue(result[scenario].grossShelfM2PerYear, 1)} кг/м²/год
           </p>
           <p className="scenario-sub">
             Циклов/год: {formatValue(result[scenario].cyclesPerYear, 2)} · с куста/год:{' '}
@@ -684,19 +662,17 @@ function ResultsTable({
   crop,
   title,
   result,
-  areaBasis,
   clientMode = false,
 }: {
   crop: 'SD' | 'DN'
   title: string
   result: CropResult
-  areaBasis: AreaBasis
   clientMode?: boolean
 }) {
   return (
     <section className="result-card">
       <h3>{title}</h3>
-      <ScenarioCards crop={crop} result={result} areaBasis={areaBasis} clientMode={clientMode} />
+      <ScenarioCards crop={crop} result={result} clientMode={clientMode} />
       <div className={`table-wrap ${clientMode ? 'no-print-table' : ''}`}>
         <table>
           <thead>
@@ -706,7 +682,6 @@ function ResultsTable({
               <th>Валовый, кг/м² поверхности/год</th>
               <th>Биологический, кг/м² поверхности/год</th>
               <th>Товарный, кг/м² поверхности/год</th>
-              <th>Товарный, кг/м² пола/год</th>
               <th>Ферма, товарный кг/год</th>
               <th>Ферма, товарный кг/мес</th>
             </tr>
@@ -719,7 +694,6 @@ function ResultsTable({
                 <td>{formatValue(result[scenario].grossShelfM2PerYear, 1)}</td>
                 <td>{formatValue(result[scenario].bioShelfM2PerYear, 1)}</td>
                 <td>{formatValue(result[scenario].marketShelfM2PerYear, 1)}</td>
-                <td>{formatValue(result[scenario].marketFloorM2PerYear, 1)}</td>
                 <td>{formatValue(result[scenario].farmMarketAnnualKg, 1)}</td>
                 <td>{formatValue(result[scenario].farmMarketMonthlyKg, 1)}</td>
               </tr>
@@ -727,9 +701,6 @@ function ResultsTable({
           </tbody>
         </table>
       </div>
-      <p className="hint">
-        В карточках основной показатель показывается для базы: {AREA_BASIS_GENITIVE[areaBasis]}.
-      </p>
     </section>
   )
 }
@@ -751,6 +722,15 @@ function App() {
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
   const [pdfExporting, setPdfExporting] = useState(false)
   const [sensitivityPct, setSensitivityPct] = useState(10)
+  const [econOpen, setEconOpen] = useState(false)
+  const [econ, setEcon] = useState<BerryEconState>(() => {
+    try {
+      const raw = localStorage.getItem('berryEconV1')
+      return raw ? { ...DEFAULT_BERRY_ECON, ...(JSON.parse(raw) as Partial<BerryEconState>) } : DEFAULT_BERRY_ECON
+    } catch {
+      return DEFAULT_BERRY_ECON
+    }
+  })
   const stickyVisible = useStickyVisible()
   const isMobileGuide = useIsMobileGuide()
 
@@ -788,6 +768,14 @@ function App() {
   useEffect(() => {
     localStorage.setItem('berryClientMode', clientMode ? '1' : '0')
   }, [clientMode])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('berryEconV1', JSON.stringify(econ))
+    } catch {
+      // ignore
+    }
+  }, [econ])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -860,18 +848,26 @@ function App() {
     return { month: bestMonth, kg: bestKg }
   }, [farmMonthlyData])
 
+  const farmAnnualKgTotal = useMemo(() => {
+    let total = 0
+    if (state.cropType === 'SD' || state.cropType === 'both') total += sdResult.avg.farmMarketAnnualKg
+    if (state.cropType === 'DN' || state.cropType === 'both') total += dnResult.avg.farmMarketAnnualKg
+    return total
+  }, [state.cropType, sdResult, dnResult])
+
+  const farmMonthlyKgTotal = useMemo(() => farmAnnualKgTotal / 12, [farmAnnualKgTotal])
+
   useEffect(() => {
     const nextUrl = `${window.location.pathname}?${toSearchParams(state).toString()}`
     window.history.replaceState(null, '', nextUrl)
   }, [state])
 
   const updateCommonField = (
-    key: 'density' | 'tiers' | 'farmAreaM2' | 'uncertaintyPct',
+    key: 'density' | 'farmAreaM2' | 'uncertaintyPct',
     value: number,
   ) => {
     setState((prev) => {
       if (key === 'density') return { ...prev, density: clamp(value, 1, 90) }
-      if (key === 'tiers') return { ...prev, tiers: clamp(value, 1, 30) }
       if (key === 'farmAreaM2') return { ...prev, farmAreaM2: clamp(value, 1) }
       return { ...prev, uncertaintyPct: clamp(value, 0, 30) }
     })
@@ -933,7 +929,6 @@ function App() {
         'Валовый кг/м2 поверхности/год',
         'Биологический кг/м2 поверхности/год',
         'Товарный кг/м2 поверхности/год',
-        'Товарный кг/м2 пола/год',
         'Ферма товарный кг/год',
         'Ферма товарный кг/мес',
         'НСД: продуктивные месяцы',
@@ -951,7 +946,6 @@ function App() {
             formatValue(result[scenario].grossShelfM2PerYear, 2),
             formatValue(result[scenario].bioShelfM2PerYear, 2),
             formatValue(result[scenario].marketShelfM2PerYear, 2),
-            formatValue(result[scenario].marketFloorM2PerYear, 2),
             formatValue(result[scenario].farmMarketAnnualKg, 2),
             formatValue(result[scenario].farmMarketMonthlyKg, 2),
             formatValue(result[scenario].productiveMonths, 2),
@@ -1002,18 +996,17 @@ function App() {
           { label: 'Культура', value: cropTypeLabel },
           {
             label: 'База расчёта',
-            value: AREA_BASIS_SHORT[state.areaBasis],
+            value: 'полезная посевная площадь',
           },
           { label: 'Плотность', value: `${state.density} раст/м²` },
-          { label: 'Ярусов', value: String(state.tiers) },
           { label: 'Площадь фермы', value: `${state.farmAreaM2} м²` },
           {
             label: 'КСД (средний)',
-            value: `${formatValue(sdResult.avg.marketMainM2PerYear, 1)} кг/м²/год`,
+            value: `${formatValue(sdResult.avg.marketM2PerYear, 1)} кг/м²/год`,
           },
           {
             label: 'НСД (средний)',
-            value: `${formatValue(dnResult.avg.marketMainM2PerYear, 1)} кг/м²/год`,
+            value: `${formatValue(dnResult.avg.marketM2PerYear, 1)} кг/м²/год`,
           },
         ],
       })
@@ -1136,9 +1129,8 @@ function App() {
       <Toast message={toast} />
       <StickySummary
         cropType={state.cropType}
-        areaBasis={state.areaBasis}
-        sdAvg={sdResult.avg.marketMainM2PerYear}
-        dnAvg={dnResult.avg.marketMainM2PerYear}
+        sdAvg={sdResult.avg.marketM2PerYear}
+        dnAvg={dnResult.avg.marketM2PerYear}
         visible={stickyVisible}
       />
       {showQr && <QrModal url={window.location.href} onClose={() => setShowQr(false)} />}
@@ -1154,14 +1146,10 @@ function App() {
         <SetupWizard
           step={wizardStep}
           cropType={state.cropType}
-          areaBasis={state.areaBasis}
           density={state.density}
-          tiers={state.tiers}
           farmAreaM2={state.farmAreaM2}
           onCropType={(cropType) => setState((prev) => ({ ...prev, cropType }))}
-          onAreaBasis={(areaBasis) => setState((prev) => ({ ...prev, areaBasis }))}
           onDensity={(density) => updateCommonField('density', density)}
-          onTiers={(tiers) => updateCommonField('tiers', tiers)}
           onFarmArea={(farmAreaM2) => updateCommonField('farmAreaM2', farmAreaM2)}
           kLosses={state.kLosses}
           kPests={state.kPests}
@@ -1215,18 +1203,6 @@ function App() {
               </button>
             ))}
           </div>
-          <div className="toggle">
-            {(['shelf', 'floor'] as AreaBasis[]).map((basis) => (
-              <button
-                key={basis}
-                type="button"
-                className={state.areaBasis === basis ? 'active' : ''}
-                onClick={() => setState((prev) => ({ ...prev, areaBasis: basis }))}
-              >
-                {AREA_BASIS_BUTTON_LABELS[basis]}
-              </button>
-            ))}
-          </div>
         </div>
       </header>
 
@@ -1266,8 +1242,7 @@ function App() {
                 Свет, опыление, питание и климат в модели считаются идеальными и не задаются отдельными коэффициентами.
               </p>
               <p className="hint">
-                <strong>База расчёта:</strong> «полезная посевная площадь» — урожай на площадь посадки ярусов;
-                «площадь по полу» — пересчёт через число ярусов на площадь пола фермы.
+                <strong>База расчёта:</strong> все значения «кг/м²» считаются на <em>полезную посевную площадь</em>.
               </p>
             </details>
             <details>
@@ -1306,7 +1281,7 @@ function App() {
                   <strong>Плотность, раст/м² поверхности:</strong> линейно масштабирует урожай на м².
                 </li>
                 <li>
-                  <strong>Число ярусов:</strong> влияет на пересчёт «площадь по полу» и на базу «полезная посевная площадь».
+                  <strong>Плотность:</strong> линейно влияет на урожай на м² полезной посевной площади.
                 </li>
                 <li>
                   <strong>Посевная полезная площадь фермы, м²:</strong> масштабирует итог на всю площадку (кг/год, кг/мес).
@@ -1416,17 +1391,6 @@ function App() {
                 step={1}
                 value={state.density}
                 onChange={(event) => updateCommonField('density', Number(event.target.value))}
-              />
-            </label>
-            <label className="field">
-              <HintLabel label="Число ярусов" hint={FIELD_HINTS.tiers} />
-              <input
-                type="number"
-                min={1}
-                max={30}
-                step={1}
-                value={state.tiers}
-                onChange={(event) => updateCommonField('tiers', Number(event.target.value))}
               />
             </label>
           </div>
@@ -1693,6 +1657,9 @@ function App() {
             <button type="button" onClick={() => setPdfDialogOpen(true)}>
               Выгрузка PDF
             </button>
+            <button type="button" onClick={() => setEconOpen((v) => !v)}>
+              {econOpen ? 'Скрыть экономику' : 'Экономика'}
+            </button>
           </div>
           {linkStatus && <p className="status">{linkStatus}</p>}
         </aside>
@@ -1701,18 +1668,17 @@ function App() {
           <div className="print-only print-header">
             <h2>Калькулятор урожая клубники — отчёт · Daogreen</h2>
             <p>
-              Плотность {state.density} раст/м² · ярусов {state.tiers} · площадь {state.farmAreaM2} м² · база:{' '}
-              {AREA_BASIS_SHORT[state.areaBasis]}
+              Плотность {state.density} раст/м² · площадь {state.farmAreaM2} м² · база: полезная посевная площадь
             </p>
           </div>
           {(state.cropType === 'SD' || state.cropType === 'both') && (
             <div id="pdf-sec-results-sd">
-              <ResultsTable crop="SD" title="Результаты КСД" result={sdResult} areaBasis={state.areaBasis} clientMode={clientMode} />
+              <ResultsTable crop="SD" title="Результаты КСД" result={sdResult} clientMode={clientMode} />
             </div>
           )}
           {(state.cropType === 'DN' || state.cropType === 'both') && (
             <div id="pdf-sec-results-dn">
-              <ResultsTable crop="DN" title="Результаты НСД" result={dnResult} areaBasis={state.areaBasis} clientMode={clientMode} />
+              <ResultsTable crop="DN" title="Результаты НСД" result={dnResult} clientMode={clientMode} />
             </div>
           )}
 
@@ -1791,7 +1757,7 @@ function App() {
             </div>
             <p className="hint">
               Показывает, как меняется товарный урожай при отклонении плотности и/или выхода с куста на выбранный
-              процент. База: {AREA_BASIS_SHORT[state.areaBasis]}, площадь фермы {formatValue(state.farmAreaM2, 1)} м².
+              процент. База: полезная посевная площадь, площадь фермы {formatValue(state.farmAreaM2, 1)} м².
             </p>
           </section>
 
@@ -1840,9 +1806,18 @@ function App() {
             </p>
           </section>
 
+          {econOpen && (
+            <BerryEconPanel
+              econ={econ}
+              onChange={setEcon}
+              annualKg={farmAnnualKgTotal}
+              monthlyKg={farmMonthlyKgTotal}
+            />
+          )}
+
           {!clientMode && (
           <section className="chart-card" id="pdf-sec-chart-uncertainty">
-            <h3>Диапазон неопределенности 10/50/90% (товарный кг/м² {AREA_BASIS_GENITIVE[state.areaBasis]} в год)</h3>
+            <h3>Диапазон неопределенности 10/50/90% (товарный кг/м² полезной посевной площади в год)</h3>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={percentileChartData}>
@@ -1946,7 +1921,7 @@ function App() {
             <h3>Источники и доверие</h3>
             <ul>
               <li>iFarm Berries: структура КСД/НСД, потолочные и подтверждённые урожаи.</li>
-              <li>Ferme d'Hiver: 160 кг/м² пола/год, Plenty: ~480 кг/м² пола/год.</li>
+              <li>Ferme d'Hiver и Plenty: ориентиры по промышленной урожайности.</li>
               <li>Artechno AVF+: целевой диапазон 40-60 кг/м²/год.</li>
               <li>Agrotonomy и Lyine: технологические ориентиры для параметризации модели.</li>
             </ul>

@@ -69,8 +69,8 @@ export function buildSensitivityLines(
     return {
       id: row.id,
       label: row.label,
-      sd: sdResult.marketMainM2PerYear,
-      dn: dnResult.marketMainM2PerYear,
+      sd: sdResult.marketM2PerYear,
+      dn: dnResult.marketM2PerYear,
       sdFarmKg: sdResult.farmMarketAnnualKg,
       dnFarmKg: dnResult.farmMarketAnnualKg,
     }

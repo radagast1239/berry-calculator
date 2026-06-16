@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import type { AreaBasis, CropType } from './types'
-import { AREA_BASIS_BUTTON_LABELS, AREA_BASIS_GENITIVE } from './types'
+import type { CropType } from './types'
 
 export type BenchmarkLevel = 'low' | 'ok' | 'warn' | 'high'
 
@@ -29,7 +28,6 @@ export function getBenchmarkLevel(
 
 export const FIELD_HINTS: Record<string, string> = {
   density: 'Число растений на 1 м² полезной поверхности ярусов. Линейно масштабирует урожай.',
-  tiers: 'Сколько ярусов в конструкции. Влияет на пересчёт «кг/м² пола».',
   farmAreaM2: 'Посевная полезная площадь фермы для расчёта урожая всей площадки (кг/год и кг/мес).',
   uncertaintyPct:
     'Насколько широким будет диапазон «пессимистичный — реалистичный — оптимистичный» (10%/50%/90%) на графике ниже. Карточки Мин/Средний/Макс и основные цифры не меняются — меняется только разброс в симуляции.',
@@ -69,30 +67,27 @@ export function Toast({ message }: { message: string }) {
 
 export function StickySummary({
   cropType,
-  areaBasis,
   sdAvg,
   dnAvg,
   visible,
 }: {
   cropType: CropType
-  areaBasis: AreaBasis
   sdAvg: number
   dnAvg: number
   visible: boolean
 }) {
   if (!visible) return null
-  const area = AREA_BASIS_GENITIVE[areaBasis]
   return (
     <div className="sticky-summary" aria-hidden={!visible}>
       <div className="sticky-summary-inner">
         <strong>Итог (средний сценарий)</strong>
         {cropType === 'both' && (
           <span>
-            КСД: {sdAvg.toFixed(1)} · НСД: {dnAvg.toFixed(1)} кг/м² {area}/год
+            КСД: {sdAvg.toFixed(1)} · НСД: {dnAvg.toFixed(1)} кг/м² полезной посевной площади/год
           </span>
         )}
-        {cropType === 'SD' && <span>КСД: {sdAvg.toFixed(1)} кг/м² {area}/год</span>}
-        {cropType === 'DN' && <span>НСД: {dnAvg.toFixed(1)} кг/м² {area}/год</span>}
+        {cropType === 'SD' && <span>КСД: {sdAvg.toFixed(1)} кг/м² полезной посевной площади/год</span>}
+        {cropType === 'DN' && <span>НСД: {dnAvg.toFixed(1)} кг/м² полезной посевной площади/год</span>}
       </div>
     </div>
   )
@@ -125,17 +120,13 @@ export type WizardStep = 0 | 1 | 2
 export function SetupWizard({
   step,
   cropType,
-  areaBasis,
   density,
-  tiers,
   farmAreaM2,
   kLosses,
   kPests,
   packout,
   onCropType,
-  onAreaBasis,
   onDensity,
-  onTiers,
   onFarmArea,
   onKLosses,
   onKPests,
@@ -145,17 +136,13 @@ export function SetupWizard({
 }: {
   step: WizardStep
   cropType: CropType
-  areaBasis: AreaBasis
   density: number
-  tiers: number
   farmAreaM2: number
   kLosses: number
   kPests: number
   packout: number
   onCropType: (v: CropType) => void
-  onAreaBasis: (v: AreaBasis) => void
   onDensity: (v: number) => void
-  onTiers: (v: number) => void
   onFarmArea: (v: number) => void
   onKLosses: (v: number) => void
   onKPests: (v: number) => void
@@ -170,7 +157,7 @@ export function SetupWizard({
 
         {step === 0 && (
           <>
-            <p className="hint">Выберите тип культуры и базу для отображения результатов.</p>
+            <p className="hint">Выберите тип культуры.</p>
             <div className="toggle wizard-toggle">
               {(['SD', 'DN', 'both'] as CropType[]).map((type) => (
                 <button
@@ -183,18 +170,6 @@ export function SetupWizard({
                 </button>
               ))}
             </div>
-            <div className="toggle wizard-toggle">
-              {(['shelf', 'floor'] as AreaBasis[]).map((basis) => (
-                <button
-                  key={basis}
-                  type="button"
-                  className={areaBasis === basis ? 'active' : ''}
-                  onClick={() => onAreaBasis(basis)}
-                >
-                  {AREA_BASIS_BUTTON_LABELS[basis].replace(/^База: /, '')}
-                </button>
-              ))}
-            </div>
           </>
         )}
 
@@ -204,10 +179,6 @@ export function SetupWizard({
             <label className="field">
               <HintLabel label="Плотность, раст/м²" hint={FIELD_HINTS.density} />
               <input type="number" min={1} max={90} value={density} onChange={(e) => onDensity(Number(e.target.value))} />
-            </label>
-            <label className="field">
-              <HintLabel label="Число ярусов" hint={FIELD_HINTS.tiers} />
-              <input type="number" min={1} max={30} value={tiers} onChange={(e) => onTiers(Number(e.target.value))} />
             </label>
             <label className="field">
               <HintLabel label="Посевная полезная площадь фермы, м²" hint={FIELD_HINTS.farmAreaM2} />
