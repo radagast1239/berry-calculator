@@ -682,6 +682,14 @@
   font-weight: 600;
 }
 
+.header-add-sort {
+  width: auto;
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
 button.primary,
 .btn-add-sort.primary,
 .sort-quick-actions button.primary,

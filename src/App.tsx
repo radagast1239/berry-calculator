@@ -1092,6 +1092,9 @@ function App() {
           <button type="button" className="ghost-btn" onClick={() => setWizardOpen(true)}>
             Мастер
           </button>
+          <button type="button" className="btn-add-sort primary header-add-sort" onClick={handleAddSort}>
+            ➕ Добавить свой сорт
+          </button>
           {canUndo && (
             <button type="button" className="ghost-btn" onClick={undo} title="Ctrl+Z">
               Отменить
