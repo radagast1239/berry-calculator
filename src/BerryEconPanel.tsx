@@ -26,10 +26,10 @@ export function BerryEconPanel({
 
   return (
     <section className="chart-card" id="pdf-sec-econ">
-      <h3>Экономика ягоды (черновой расчёт)</h3>
+      <h3>Экономика ягоды (расширенная, без сезонности)</h3>
       <p className="hint">
-        Модель берёт ваш расчёт урожая (кг/мес и кг/год с фермы) и переводит в деньги. Это упрощённая экономика «как в
-        соседнем проекте»: выручка − переменные − фиксированные = прибыль и окупаемость CAPEX.
+        Модель берёт ваш расчёт урожая (кг/мес и кг/год с фермы) и переводит в деньги. Это годовая/помесячная экономика
+        без сезонности: выручка − комиссия − переменные − фиксированные = EBITDA, затем (опционально) налог = чистая прибыль.
       </p>
 
       <div className="inputs-row">
@@ -67,7 +67,21 @@ export function BerryEconPanel({
           />
         </label>
         <label className="field">
-          <HintLabel label="Электричество, ₽/мес" hint="Можно ввести суммарную цифру по ферме (свет+прочее)." />
+          <HintLabel label="Комиссия/сбыт, % от выручки" hint="Маркетплейс, комиссия сети, агентские, скидки как % от выручки." />
+          <input
+            type="number"
+            min={0}
+            max={50}
+            step={0.5}
+            value={econ.salesFeePct}
+            onChange={(e) => set('salesFeePct', Number(e.target.value))}
+          />
+        </label>
+      </div>
+
+      <div className="inputs-row">
+        <label className="field">
+          <HintLabel label="Электричество, ₽/мес" hint="Суммарно по ферме (свет+прочее)." />
           <input
             type="number"
             min={0}
@@ -76,9 +90,6 @@ export function BerryEconPanel({
             onChange={(e) => set('electricityRubPerMonth', Number(e.target.value))}
           />
         </label>
-      </div>
-
-      <div className="inputs-row">
         <label className="field">
           <HintLabel label="Аренда, ₽/мес" hint="Аренда помещения/площадки." />
           <input
@@ -89,6 +100,9 @@ export function BerryEconPanel({
             onChange={(e) => set('rentRubPerMonth', Number(e.target.value))}
           />
         </label>
+      </div>
+
+      <div className="inputs-row">
         <label className="field">
           <HintLabel label="ФОТ, ₽/мес" hint="Фонд оплаты труда (с учётом налогов/взносов, если хотите)." />
           <input
@@ -99,21 +113,31 @@ export function BerryEconPanel({
             onChange={(e) => set('payrollRubPerMonth', Number(e.target.value))}
           />
         </label>
-      </div>
-
-      <div className="inputs-row">
         <label className="field">
-          <HintLabel label="Логистика (фикс.), ₽/мес" hint="Если логистика считается фиксированной статьёй, а не на кг." />
+          <HintLabel label="Обслуживание/ремонт, ₽/мес" hint="Сервис, расходники инфраструктуры, ремонты, ЗИП." />
           <input
             type="number"
             min={0}
             step={1000}
-            value={econ.logisticsRubPerMonth}
-            onChange={(e) => set('logisticsRubPerMonth', Number(e.target.value))}
+            value={econ.maintenanceRubPerMonth}
+            onChange={(e) => set('maintenanceRubPerMonth', Number(e.target.value))}
+          />
+        </label>
+      </div>
+
+      <div className="inputs-row">
+        <label className="field">
+          <HintLabel label="Админ/управление, ₽/мес" hint="Бухгалтерия, управление, связь, софт, офисные расходы." />
+          <input
+            type="number"
+            min={0}
+            step={1000}
+            value={econ.adminRubPerMonth}
+            onChange={(e) => set('adminRubPerMonth', Number(e.target.value))}
           />
         </label>
         <label className="field">
-          <HintLabel label="Прочие, ₽/мес" hint="Ремонт, обслуживание, бухгалтерия, вода и т.п." />
+          <HintLabel label="Прочие, ₽/мес" hint="Любые прочие фиксированные статьи." />
           <input
             type="number"
             min={0}
@@ -135,6 +159,17 @@ export function BerryEconPanel({
             onChange={(e) => set('capexRub', Number(e.target.value))}
           />
         </label>
+        <label className="field">
+          <HintLabel label="Налог на прибыль, %" hint="Если хотите оценить чистую прибыль. 0% — не учитывать." />
+          <input
+            type="number"
+            min={0}
+            max={50}
+            step={0.5}
+            value={econ.taxPct}
+            onChange={(e) => set('taxPct', Number(e.target.value))}
+          />
+        </label>
         <div className="field">
           <span>Урожай из расчёта</span>
           <div className="hint">
@@ -153,6 +188,10 @@ export function BerryEconPanel({
               </td>
             </tr>
             <tr>
+              <td>Комиссия/сбыт, ₽/мес</td>
+              <td>{fmtRub(result.salesFeeRubPerMonth)}</td>
+            </tr>
+            <tr>
               <td>Переменные, ₽/мес</td>
               <td>{fmtRub(result.variableRubPerMonth)}</td>
             </tr>
@@ -161,18 +200,44 @@ export function BerryEconPanel({
               <td>{fmtRub(result.fixedRubPerMonth)}</td>
             </tr>
             <tr className="sensitivity-base">
-              <td>Прибыль, ₽/мес</td>
+              <td>EBITDA, ₽/мес</td>
               <td>
-                <strong>{fmtRub(result.profitRubPerMonth)}</strong>
+                <strong>{fmtRub(result.ebitdaRubPerMonth)}</strong>
               </td>
             </tr>
             <tr>
-              <td>Прибыль, ₽/год</td>
-              <td>{fmtRub(result.profitRubPerYear)}</td>
+              <td>EBITDA, ₽/год</td>
+              <td>{fmtRub(result.ebitdaRubPerYear)}</td>
             </tr>
             <tr>
-              <td>Прибыль на 1 кг, ₽/кг</td>
-              <td>{Math.round(result.unitProfitRubPerKg)} ₽/кг</td>
+              <td>Налог, ₽/мес</td>
+              <td>{fmtRub(result.taxRubPerMonth)}</td>
+            </tr>
+            <tr className="sensitivity-base">
+              <td>Чистая прибыль, ₽/мес</td>
+              <td>
+                <strong>{fmtRub(result.netProfitRubPerMonth)}</strong>
+              </td>
+            </tr>
+            <tr>
+              <td>Чистая прибыль, ₽/год</td>
+              <td>{fmtRub(result.netProfitRubPerYear)}</td>
+            </tr>
+            <tr>
+              <td>Маржинальность (вклад), ₽/кг</td>
+              <td>{Math.round(result.contributionRubPerKg)} ₽/кг</td>
+            </tr>
+            <tr>
+              <td>Чистая прибыль на 1 кг, ₽/кг</td>
+              <td>{Math.round(result.netUnitProfitRubPerKg)} ₽/кг</td>
+            </tr>
+            <tr>
+              <td>Точка безубыточности, кг/мес</td>
+              <td>{result.breakEvenKgPerMonth === null ? '—' : `${Math.ceil(result.breakEvenKgPerMonth)} кг/мес`}</td>
+            </tr>
+            <tr>
+              <td>Безубыточная цена при текущем объёме, ₽/кг</td>
+              <td>{result.breakEvenPriceRubPerKg === null ? '—' : `${Math.ceil(result.breakEvenPriceRubPerKg)} ₽/кг`}</td>
             </tr>
             <tr>
               <td>Окупаемость CAPEX</td>

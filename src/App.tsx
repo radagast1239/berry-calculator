@@ -1307,6 +1307,19 @@ function App() {
               </button>
             ))}
           </div>
+          <div className="sort-quick-controls">
+            <div className="sort-quick-name">
+              Сорт: <strong>{activeSort?.name ?? '—'}</strong>
+            </div>
+            <div className="sort-quick-actions">
+              <button type="button" onClick={() => setCompareSortsOpen((open) => !open)}>
+                {compareSortsOpen ? 'Скрыть сравнение' : 'Сравнить сорта'}
+              </button>
+              <button type="button" onClick={handleAddSort}>
+                + Сорт
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 

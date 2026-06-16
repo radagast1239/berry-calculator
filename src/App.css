@@ -507,6 +507,24 @@
   gap: 8px;
 }
 
+.sort-quick-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sort-quick-name {
+  color: #374151;
+}
+
+.sort-quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .toggle {
   display: flex;
   gap: 8px;
@@ -1110,6 +1128,10 @@ thead {
     width: 100%;
     font-size: 13px;
     padding: 9px 10px;
+  }
+
+  .sort-quick-actions button {
+    width: auto;
   }
 
   .field {
