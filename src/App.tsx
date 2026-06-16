@@ -22,6 +22,17 @@ import { BerryEconPanel } from './BerryEconPanel'
 import { DEFAULT_BERRY_ECON, type BerryEconState } from './berryEcon'
 import { PdfExportDialog } from './PdfExportDialog'
 import { exportSectionsToPdf } from './pdfExport'
+import { SortComparePanel } from './SortComparePanel'
+import { SortsBar } from './SortsBar'
+import { extractFarmSettings, extractSortParams, mergeToCalculatorState } from './sortTypes'
+import type { SortsCollection } from './sortTypes'
+import {
+  addSort,
+  initAppSortsState,
+  persistFromCalculator,
+  removeSort,
+  renameSort,
+} from './sortsStorage'
 import {
   BENCHMARK_LEVEL_LABELS,
   FIELD_HINTS,
@@ -148,9 +159,10 @@ const parseMonthlyProfile = (raw: string | null, fallback: number[]): number[] =
   return values
 }
 
-const toSearchParams = (state: CalculatorState): URLSearchParams => {
+const toSearchParams = (state: CalculatorState, sortId?: string): URLSearchParams => {
   const params = new URLSearchParams()
   params.set('v', String(MODEL_VERSION))
+  if (sortId) params.set('sortId', sortId)
   params.set('cropType', state.cropType)
   params.set('density', String(state.density))
   params.set('farmAreaM2', String(state.farmAreaM2))
@@ -705,8 +717,18 @@ function ResultsTable({
   )
 }
 
+const initialSortsRef = { current: null as ReturnType<typeof initAppSortsState> | null }
+
 function App() {
-  const [state, setStateRaw] = useState<CalculatorState>(() => parseStateFromUrl())
+  if (!initialSortsRef.current) {
+    initialSortsRef.current = initAppSortsState(parseStateFromUrl())
+  }
+  const sortsCollectionRef = useRef<SortsCollection>(initialSortsRef.current.collection)
+
+  const [state, setStateRaw] = useState<CalculatorState>(() => initialSortsRef.current!.state)
+  const [sorts, setSorts] = useState(() => initialSortsRef.current!.collection.sorts)
+  const [activeSortId, setActiveSortId] = useState(() => initialSortsRef.current!.collection.activeSortId)
+  const [compareSortsOpen, setCompareSortsOpen] = useState(false)
   const undoStack = useRef<CalculatorState[]>([])
   const [canUndo, setCanUndo] = useState(false)
   const [toast, setToast] = useState('')
@@ -858,9 +880,91 @@ function App() {
   const farmMonthlyKgTotal = useMemo(() => farmAnnualKgTotal / 12, [farmAnnualKgTotal])
 
   useEffect(() => {
-    const nextUrl = `${window.location.pathname}?${toSearchParams(state).toString()}`
+    const nextUrl = `${window.location.pathname}?${toSearchParams(state, activeSortId).toString()}`
     window.history.replaceState(null, '', nextUrl)
-  }, [state])
+  }, [state, activeSortId])
+
+  useEffect(() => {
+    const next = persistFromCalculator(sortsCollectionRef.current, state, activeSortId)
+    sortsCollectionRef.current = next
+  }, [state, activeSortId])
+
+  const activeSort = useMemo(
+    () => sorts.find((s) => s.id === activeSortId) ?? sorts[0],
+    [sorts, activeSortId],
+  )
+
+  const sortCompareResults = useMemo(() => {
+    const farm = extractFarmSettings(state)
+    const sortsWithCurrent = sorts.map((s) =>
+      s.id === activeSortId ? { ...s, params: extractSortParams(state) } : s,
+    )
+    return sortsWithCurrent.map((sort) => {
+      const calcState = mergeToCalculatorState(farm, sort.params)
+      return { sort, sd: calculateCrop(calcState, 'SD'), dn: calculateCrop(calcState, 'DN') }
+    })
+  }, [state, sorts, activeSortId])
+
+  const selectSort = useCallback(
+    (id: string) => {
+      if (id === activeSortId) return
+      const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId)
+      sortsCollectionRef.current = saved
+      setSorts(saved.sorts)
+      const target = saved.sorts.find((s) => s.id === id)
+      if (!target) return
+      sortsCollectionRef.current = { ...saved, activeSortId: id }
+      setActiveSortId(id)
+      setStateRaw(mergeToCalculatorState(extractFarmSettings(state), target.params))
+      showToast(`Открыт сорт: ${target.name}`)
+    },
+    [activeSortId, state, showToast],
+  )
+
+  const handleAddSort = useCallback(() => {
+    const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId)
+    const next = addSort(saved)
+    if (!next) {
+      showToast('Можно сохранить не более 6 сортов.')
+      return
+    }
+    sortsCollectionRef.current = next
+    setSorts(next.sorts)
+    const newSort = next.sorts[next.sorts.length - 1]
+    setActiveSortId(newSort.id)
+    setStateRaw(mergeToCalculatorState(extractFarmSettings(state), newSort.params))
+    showToast(`Добавлен: ${newSort.name}`)
+  }, [activeSortId, state, showToast])
+
+  const handleRemoveSort = useCallback(
+    (id: string) => {
+      const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId)
+      const next = removeSort(saved, id)
+      if (!next) {
+        showToast('Нужен хотя бы один сорт.')
+        return
+      }
+      sortsCollectionRef.current = next
+      setSorts(next.sorts)
+      if (id === activeSortId) {
+        const target = next.sorts.find((s) => s.id === next.activeSortId)
+        if (target) {
+          setActiveSortId(next.activeSortId)
+          setStateRaw(mergeToCalculatorState(extractFarmSettings(state), target.params))
+        }
+      } else {
+        setActiveSortId(next.activeSortId)
+      }
+      showToast('Сорт удалён.')
+    },
+    [activeSortId, state, showToast],
+  )
+
+  const handleRenameSort = useCallback((id: string, name: string) => {
+    const next = renameSort(sortsCollectionRef.current, id, name)
+    sortsCollectionRef.current = next
+    setSorts(next.sorts)
+  }, [])
 
   const updateCommonField = (
     key: 'density' | 'farmAreaM2' | 'uncertaintyPct',
@@ -1222,6 +1326,17 @@ function App() {
       <section className="layout">
         <aside className="panel no-print-panel">
           <h2>Параметры</h2>
+
+          <SortsBar
+            sorts={sorts}
+            activeSortId={activeSortId}
+            compareOpen={compareSortsOpen}
+            onSelect={selectSort}
+            onAdd={handleAddSort}
+            onRemove={handleRemoveSort}
+            onRename={handleRenameSort}
+            onToggleCompare={() => setCompareSortsOpen((open) => !open)}
+          />
 
           {!clientMode && (
           <section className="crop-block guide-block">
@@ -1668,9 +1783,25 @@ function App() {
           <div className="print-only print-header">
             <h2>Калькулятор урожая клубники — отчёт · Daogreen</h2>
             <p>
-              Плотность {state.density} раст/м² · площадь {state.farmAreaM2} м² · база: полезная посевная площадь
+              Сорт: {activeSort?.name ?? '—'} · плотность {state.density} раст/м² · площадь {state.farmAreaM2} м² ·
+              база: полезная посевная площадь
             </p>
           </div>
+
+          {compareSortsOpen && sorts.length > 0 && (
+            <SortComparePanel
+              sorts={sorts}
+              results={sortCompareResults}
+              activeSortId={activeSortId}
+              cropType={state.cropType}
+              onSelect={selectSort}
+            />
+          )}
+
+          <p className="active-sort-label no-print">
+            Расчёт для сорта: <strong>{activeSort?.name ?? '—'}</strong>
+          </p>
+
           {(state.cropType === 'SD' || state.cropType === 'both') && (
             <div id="pdf-sec-results-sd">
               <ResultsTable crop="SD" title="Результаты КСД" result={sdResult} clientMode={clientMode} />
