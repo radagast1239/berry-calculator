@@ -98,6 +98,9 @@ export function PdfExportDialog({
           <button type="button" onClick={() => applyPreset(PDF_PRESETS.client)}>
             Для клиента
           </button>
+          <button type="button" onClick={() => applyPreset(PDF_PRESETS.investor)}>
+            Для инвестора
+          </button>
           <button type="button" onClick={() => applyPreset(PDF_PRESETS.full)}>
             Полный
           </button>

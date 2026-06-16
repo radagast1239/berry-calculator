@@ -71,6 +71,24 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
     group: 'charts',
     selector: '#pdf-sec-chart-farm-monthly',
   },
+  {
+    id: 'sorts-compare',
+    label: 'Сравнение сортов',
+    group: 'results',
+    selector: '#pdf-sec-sorts-compare',
+  },
+  {
+    id: 'sorts-econ',
+    label: 'Экономика по сортам',
+    group: 'results',
+    selector: '#pdf-sec-sorts-econ',
+  },
+  {
+    id: 'econ',
+    label: 'Экономика ягоды',
+    group: 'results',
+    selector: '#pdf-sec-econ',
+  },
 ]
 
 export const PDF_GROUP_LABELS: Record<PdfSectionGroup, string> = {
@@ -82,6 +100,17 @@ export const PDF_GROUP_LABELS: Record<PdfSectionGroup, string> = {
 export const PDF_PRESETS = {
   client: ['cover', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly', 'sources'],
   brief: ['cover', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
+  investor: [
+    'cover',
+    'sorts-compare',
+    'sorts-econ',
+    'results-sd',
+    'results-dn',
+    'econ',
+    'chart-compare',
+    'chart-sensitivity',
+    'sources',
+  ],
   full: PDF_SECTIONS.map((s) => s.id),
 }
 

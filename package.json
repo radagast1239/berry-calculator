@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc -b && vite build",
+    "test": "vitest run --config vitest.config.ts",
     "lint": "eslint .",
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "start": "npm run build && vite preview --host 0.0.0.0 --port 4173"
@@ -31,6 +32,7 @@
     "globals": "^17.6.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "vitest": "^3.2.4"
   }
 }

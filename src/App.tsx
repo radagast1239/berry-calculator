@@ -19,19 +19,38 @@ import type { CalculatorState, CropResult } from './calculatorTypes'
 import { migrateCalculatorState, MODEL_VERSION, parseModelVersion } from './modelVersion'
 import { buildSensitivityLines } from './sensitivity'
 import { BerryEconPanel } from './BerryEconPanel'
-import { DEFAULT_BERRY_ECON, type BerryEconState } from './berryEcon'
+import { DEFAULT_BERRY_ECON, migrateBerryEconState, type BerryEconState } from './berryEcon'
+import { YIELD_BENCHMARKS } from './benchmarks'
+import {
+  buildDnCycleWaveProfile,
+  buildDnMonthlyCalendar,
+  calculateCrop,
+  clamp,
+  computeScenarioRaw,
+  getCoreFactor,
+  isOrdered,
+  roundTo,
+  simulatePercentiles,
+} from './calculatorEngine'
 import { PdfExportDialog } from './PdfExportDialog'
 import { exportSectionsToPdf } from './pdfExport'
+import { MobileSortsStrip } from './MobileSortsStrip'
+import { buildSortEconRows, SortEconComparePanel } from './SortEconComparePanel'
 import { SortComparePanel } from './SortComparePanel'
 import { SortsBar } from './SortsBar'
+import { computeSortInsights } from './sortInsights'
 import { extractFarmSettings, extractSortParams, mergeToCalculatorState } from './sortTypes'
 import type { SortsCollection } from './sortTypes'
+import { encodeSortsToUrl, exportSortsJson, importSortsJson } from './sortUrlCodec'
 import {
   addSort,
+  duplicateSort,
   initAppSortsState,
   persistFromCalculator,
   removeSort,
   renameSort,
+  replaceSortsCollection,
+  updateSortNotes,
 } from './sortsStorage'
 import {
   BENCHMARK_LEVEL_LABELS,
@@ -61,12 +80,6 @@ type TripleField =
 
 type QualityField = 'kLosses' | 'kPests' | 'packout'
 
-interface PercentileResult {
-  p10: number
-  p50: number
-  p90: number
-}
-
 const SCENARIOS: Scenario[] = ['min', 'avg', 'max']
 const MONTH_LABELS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек']
 
@@ -74,11 +87,6 @@ const SCENARIO_LABELS: Record<Scenario, string> = {
   min: 'Мин',
   avg: 'Средний',
   max: 'Макс',
-}
-
-const BENCHMARKS = {
-  SD: { confirmed: [32, 40] as const, ceiling: [40, 48] as const, max: 60 },
-  DN: { confirmed: [34, 41] as const, ceiling: [40, 60] as const, max: 70 },
 }
 
 const DEFAULT_STATE: CalculatorState = {
@@ -101,18 +109,6 @@ const DEFAULT_STATE: CalculatorState = {
   dnManualProfileEnabled: false,
   dnManualMonthlyPlantYield: [0, 0, 0.06, 0.14, 0.2, 0.14, 0.06, 0.06, 0.14, 0.2, 0.14, 0.06],
   berryMassG: { min: 8, avg: 11, max: 15 },
-}
-
-const clamp = (value: number, min: number, max?: number): number => {
-  if (Number.isNaN(value)) return min
-  if (value < min) return min
-  if (max !== undefined && value > max) return max
-  return value
-}
-
-const roundTo = (value: number, digits: number): number => {
-  const factor = 10 ** digits
-  return Math.round(value * factor) / factor
 }
 
 const formatValue = (value: number | null | undefined, digits = 1): string => {
@@ -276,272 +272,6 @@ const parseStateFromUrl = (): CalculatorState => {
   return migrateCalculatorState(parsed, modelVersion)
 }
 
-const isOrdered = (value: Triple): boolean => value.min <= value.avg && value.avg <= value.max
-
-const getCoreFactor = (state: CalculatorState): number => state.kLosses * state.kPests
-
-const computeScenarioRaw = (
-  state: CalculatorState,
-  crop: 'SD' | 'DN',
-  scenario: Scenario,
-): { grossShelfM2PerYear: number; grossShelfM2PerCycle: number } => {
-  const yieldPerPlant = crop === 'SD' ? state.sdYieldPerPlant[scenario] : state.dnYieldPerPlant[scenario]
-  const cycleMonths = crop === 'SD' ? state.sdCycleMonths[scenario] : state.dnCycleMonths[scenario]
-  const turnaround = crop === 'DN' ? state.dnTurnaroundMonths[scenario] : 0
-  const cyclesPerYear = 12 / (cycleMonths + turnaround)
-
-  if (crop === 'DN' && state.dnManualProfileEnabled) {
-    const avgYield = Math.max(state.dnYieldPerPlant.avg, 0.0001)
-    const scenarioScale = yieldPerPlant / avgYield
-    const annualPlantYield = state.dnManualMonthlyPlantYield.reduce((sum, value) => sum + value, 0) * scenarioScale
-    const grossShelfM2PerYear = annualPlantYield * state.density
-    const grossShelfM2PerCycle = cyclesPerYear > 0 ? grossShelfM2PerYear / cyclesPerYear : 0
-    return { grossShelfM2PerYear, grossShelfM2PerCycle }
-  }
-
-  const grossShelfM2PerCycle = yieldPerPlant * state.density
-  const grossShelfM2PerYear = grossShelfM2PerCycle * cyclesPerYear
-  return { grossShelfM2PerYear, grossShelfM2PerCycle }
-}
-
-const calculateCrop = (state: CalculatorState, crop: 'SD' | 'DN'): CropResult =>
-  SCENARIOS.reduce((acc, scenario) => {
-    const yieldPerPlant = crop === 'SD' ? state.sdYieldPerPlant[scenario] : state.dnYieldPerPlant[scenario]
-    const cycleMonths = crop === 'SD' ? state.sdCycleMonths[scenario] : state.dnCycleMonths[scenario]
-    const turnaroundMonths = crop === 'DN' ? state.dnTurnaroundMonths[scenario] : 0
-    const cyclesPerYear = 12 / (cycleMonths + turnaroundMonths)
-
-    const raw = computeScenarioRaw(state, crop, scenario)
-    const grossShelfM2PerCycle = raw.grossShelfM2PerCycle
-    const grossShelfM2PerYear = raw.grossShelfM2PerYear
-    const grossPlantPerYear = state.density > 0 ? grossShelfM2PerYear / state.density : 0
-    const coreFactor = getCoreFactor(state)
-    const bioShelfM2PerYear = grossShelfM2PerYear * coreFactor
-    const marketShelfM2PerYear = bioShelfM2PerYear * state.packout
-    const marketM2PerYear = marketShelfM2PerYear
-    const marketM2PerMonth = marketM2PerYear / 12
-    const farmMarketAnnualKg = marketShelfM2PerYear * state.farmAreaM2
-    const farmMarketMonthlyKg = farmMarketAnnualKg / 12
-
-    let productiveMonths: number | null = null
-    let productiveMonthMarketKg: number | null = null
-    let productiveMonthError: string | null = null
-
-    if (crop === 'DN') {
-      if (state.dnManualProfileEnabled) {
-        const avgYield = Math.max(state.dnYieldPerPlant.avg, 0.0001)
-        const scenarioScale = yieldPerPlant / avgYield
-        const monthly = state.dnManualMonthlyPlantYield.map(
-          (value) => value * scenarioScale * state.density * coreFactor * state.packout,
-        )
-        const productive = monthly.filter((value) => value > 0.0001)
-        productiveMonths = productive.length
-        if (productiveMonths === 0) {
-          productiveMonthError = 'В ручном профиле НСД нет месяцев с урожаем.'
-        } else {
-          productiveMonthMarketKg = productive.reduce((sum, value) => sum + value, 0) / productiveMonths
-        }
-      } else {
-        productiveMonths = cycleMonths - state.dnEstablishMonths[scenario]
-        if (productiveMonths <= 0) {
-          productiveMonthError = 'Фаза установления должна быть короче цикла НСД.'
-        } else {
-          const cycleMarketShelf = grossShelfM2PerCycle * coreFactor * state.packout
-          productiveMonthMarketKg = cycleMarketShelf / productiveMonths
-        }
-      }
-    }
-
-    acc[scenario] = {
-      cyclesPerYear,
-      grossPlantPerYear,
-      grossShelfM2PerCycle,
-      grossShelfM2PerYear,
-      bioShelfM2PerYear,
-      marketShelfM2PerYear,
-      marketM2PerYear,
-      marketM2PerMonth,
-      farmMarketAnnualKg,
-      farmMarketMonthlyKg,
-      productiveMonths,
-      productiveMonthMarketKg,
-      productiveMonthError,
-    }
-
-    return acc
-  }, {} as CropResult)
-
-const sampleTriangular = (min: number, mode: number, max: number): number => {
-  if (min === max) return min
-  const u = Math.random()
-  const c = (mode - min) / (max - min)
-  if (u < c) return min + Math.sqrt(u * (max - min) * (mode - min))
-  return max - Math.sqrt((1 - u) * (max - min) * (max - mode))
-}
-
-const quantile = (sorted: number[], q: number): number => {
-  if (sorted.length === 0) return 0
-  const index = (sorted.length - 1) * q
-  const lo = Math.floor(index)
-  const hi = Math.ceil(index)
-  if (lo === hi) return sorted[lo]
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (index - lo)
-}
-
-const simulatePercentiles = (
-  state: CalculatorState,
-  crop: 'SD' | 'DN',
-  iterations = 1200,
-): PercentileResult => {
-  const values: number[] = []
-  const uncertainty = state.uncertaintyPct / 100
-
-  for (let i = 0; i < iterations; i += 1) {
-    const sampledYield = sampleTriangular(
-      crop === 'SD' ? state.sdYieldPerPlant.min : state.dnYieldPerPlant.min,
-      crop === 'SD' ? state.sdYieldPerPlant.avg : state.dnYieldPerPlant.avg,
-      crop === 'SD' ? state.sdYieldPerPlant.max : state.dnYieldPerPlant.max,
-    )
-    const sampledCycle = sampleTriangular(
-      crop === 'SD' ? state.sdCycleMonths.min : state.dnCycleMonths.min,
-      crop === 'SD' ? state.sdCycleMonths.avg : state.dnCycleMonths.avg,
-      crop === 'SD' ? state.sdCycleMonths.max : state.dnCycleMonths.max,
-    )
-    const sampledTurnaround =
-      crop === 'DN'
-        ? sampleTriangular(
-            state.dnTurnaroundMonths.min,
-            state.dnTurnaroundMonths.avg,
-            state.dnTurnaroundMonths.max,
-          )
-        : 0
-
-    const cyclesPerYear = 12 / (sampledCycle + sampledTurnaround)
-    let grossShelf = sampledYield * state.density * cyclesPerYear
-    if (crop === 'DN' && state.dnManualProfileEnabled) {
-      const avgYield = Math.max(state.dnYieldPerPlant.avg, 0.0001)
-      const scenarioScale = sampledYield / avgYield
-      const manualAnnualPlant =
-        state.dnManualMonthlyPlantYield.reduce((sum, value) => sum + value, 0) * scenarioScale
-      grossShelf = manualAnnualPlant * state.density
-    }
-
-    const fluctuate = (value: number, spread: number) =>
-      clamp(value * (1 + (Math.random() * 2 - 1) * spread), 0.3, 1.2)
-    const kLosses = fluctuate(state.kLosses, uncertainty)
-    const kPests = fluctuate(state.kPests, uncertainty)
-    const packout = clamp(state.packout * (1 + (Math.random() * 2 - 1) * uncertainty * 0.7), 0.4, 1)
-    const marketShelf = grossShelf * kLosses * kPests * packout
-    values.push(marketShelf)
-  }
-
-  values.sort((a, b) => a - b)
-  return {
-    p10: quantile(values, 0.1),
-    p50: quantile(values, 0.5),
-    p90: quantile(values, 0.9),
-  }
-}
-
-const getDnWaveShares = (state: CalculatorState, scenario: Scenario): number[] => {
-  const wavesCount = state.dnWaves[scenario] >= 2.5 ? 3 : 2
-  if (wavesCount === 2) {
-    const wave1 = clamp(state.dnWave1Share[scenario], 0.1, 0.9)
-    return [wave1, 1 - wave1]
-  }
-
-  const w1 = clamp(state.dnWave1Share[scenario], 0, 1)
-  const w2 = clamp(state.dnWave2Share[scenario], 0, 1)
-  const w3 = Math.max(0, 1 - w1 - w2)
-  const total = w1 + w2 + w3 || 1
-  return [w1 / total, w2 / total, w3 / total]
-}
-
-const buildDnMonthlyCalendar = (state: CalculatorState, scenario: Scenario): number[] => {
-  const months = new Array(12).fill(0)
-  if (state.dnManualProfileEnabled) {
-    const avgYield = Math.max(state.dnYieldPerPlant.avg, 0.0001)
-    const scenarioScale = state.dnYieldPerPlant[scenario] / avgYield
-    const factor = getCoreFactor(state) * state.packout * state.density
-    return state.dnManualMonthlyPlantYield.map((value) => value * scenarioScale * factor)
-  }
-
-  const cycleMonths = state.dnCycleMonths[scenario]
-  const turnaround = state.dnTurnaroundMonths[scenario]
-  const cycleSpan = cycleMonths + turnaround
-  const productiveMonths = cycleMonths - state.dnEstablishMonths[scenario]
-  if (productiveMonths <= 0) return months
-
-  const grossCycle = state.dnYieldPerPlant[scenario] * state.density
-  const marketCycle = grossCycle * getCoreFactor(state) * state.packout
-
-  const shares = getDnWaveShares(state, scenario)
-  const centers = shares.length === 2 ? [0.3, 0.78] : [0.2, 0.55, 0.85]
-
-  for (let cycleStart = -cycleSpan; cycleStart < 12 + cycleSpan; cycleStart += cycleSpan) {
-    for (let waveIndex = 0; waveIndex < shares.length; waveIndex += 1) {
-      const waveYield = marketCycle * shares[waveIndex]
-      const monthPosition =
-        cycleStart + state.dnEstablishMonths[scenario] + productiveMonths * centers[waveIndex]
-      if (monthPosition >= 0 && monthPosition < 12) {
-        const monthIndex = Math.floor(monthPosition)
-        months[monthIndex] += waveYield
-      }
-    }
-  }
-
-  return months
-}
-
-const buildDnCycleWaveProfile = (
-  state: CalculatorState,
-  scenario: Scenario,
-): Array<{ month: number; marketKgPerMonth: number }> => {
-  if (state.dnManualProfileEnabled) {
-    const avgYield = Math.max(state.dnYieldPerPlant.avg, 0.0001)
-    const scenarioScale = state.dnYieldPerPlant[scenario] / avgYield
-    const factor = getCoreFactor(state) * state.packout * state.density
-    return state.dnManualMonthlyPlantYield.map((value, index) => ({
-      month: index + 1,
-      marketKgPerMonth: roundTo(value * scenarioScale * factor, 2),
-    }))
-  }
-
-  const cycleMonths = state.dnCycleMonths[scenario]
-  const establish = state.dnEstablishMonths[scenario]
-  const productiveMonths = cycleMonths - establish
-  if (productiveMonths <= 0) return []
-
-  const grossCycle = state.dnYieldPerPlant[scenario] * state.density
-  const marketCycle = grossCycle * getCoreFactor(state) * state.packout
-  const shares = getDnWaveShares(state, scenario)
-  const centers = shares.length === 2 ? [0.28, 0.78] : [0.18, 0.5, 0.82]
-  const widths = shares.length === 2 ? [0.16, 0.14] : [0.14, 0.12, 0.12]
-  const step = Math.max(0.1, cycleMonths / 40)
-
-  const profileWeights: Array<{ month: number; weight: number }> = []
-  let integral = 0
-
-  for (let t = 0; t <= cycleMonths + 0.0001; t += step) {
-    let weight = 0
-    if (t >= establish) {
-      const progress = clamp((t - establish) / productiveMonths, 0, 1)
-      for (let i = 0; i < shares.length; i += 1) {
-        const distance = (progress - centers[i]) / widths[i]
-        weight += shares[i] * Math.exp(-0.5 * distance * distance)
-      }
-    }
-    profileWeights.push({ month: t, weight })
-    integral += weight * step
-  }
-
-  const scale = integral > 0 ? marketCycle / integral : 0
-  return profileWeights.map((point) => ({
-    month: roundTo(point.month, 1),
-    marketKgPerMonth: roundTo(point.weight * scale, 2),
-  }))
-}
-
 interface TripleInputsProps {
   title: string
   unit: string
@@ -595,8 +325,8 @@ function TripleInputs({
 }
 
 function BenchmarkBar({ crop, value }: { crop: 'SD' | 'DN'; value: number }) {
-  const benchmark = BENCHMARKS[crop]
-  const level = getBenchmarkLevel(crop, value, BENCHMARKS)
+  const benchmark = YIELD_BENCHMARKS[crop]
+  const level = getBenchmarkLevel(crop, value, YIELD_BENCHMARKS)
   const max = benchmark.max
   const toPercent = (raw: number): number => Math.min((raw / max) * 100, 100)
   const confirmedStart = toPercent(benchmark.confirmed[0])
@@ -639,7 +369,7 @@ function ScenarioCards({
   return (
     <div className={`scenario-cards ${clientMode ? 'scenario-cards-client' : ''}`}>
       {cards.map((scenario) => {
-        const level = getBenchmarkLevel(crop, result[scenario].marketShelfM2PerYear, BENCHMARKS)
+        const level = getBenchmarkLevel(crop, result[scenario].marketShelfM2PerYear, YIELD_BENCHMARKS)
         return (
         <article className={`scenario-card scenario-${scenario} benchmark-card-${level}`} key={scenario}>
           <h4>{SCENARIO_LABELS[scenario]}</h4>
@@ -748,11 +478,12 @@ function App() {
   const [econ, setEcon] = useState<BerryEconState>(() => {
     try {
       const raw = localStorage.getItem('berryEconV1')
-      return raw ? { ...DEFAULT_BERRY_ECON, ...(JSON.parse(raw) as Partial<BerryEconState>) } : DEFAULT_BERRY_ECON
+      return raw ? migrateBerryEconState(JSON.parse(raw)) : DEFAULT_BERRY_ECON
     } catch {
       return DEFAULT_BERRY_ECON
     }
   })
+  const [sortsSavedAt, setSortsSavedAt] = useState<number | null>(null)
   const stickyVisible = useStickyVisible()
   const isMobileGuide = useIsMobileGuide()
 
@@ -870,29 +601,26 @@ function App() {
     return { month: bestMonth, kg: bestKg }
   }, [farmMonthlyData])
 
-  const farmAnnualKgTotal = useMemo(() => {
-    let total = 0
-    if (state.cropType === 'SD' || state.cropType === 'both') total += sdResult.avg.farmMarketAnnualKg
-    if (state.cropType === 'DN' || state.cropType === 'both') total += dnResult.avg.farmMarketAnnualKg
-    return total
-  }, [state.cropType, sdResult, dnResult])
-
-  const farmMonthlyKgTotal = useMemo(() => farmAnnualKgTotal / 12, [farmAnnualKgTotal])
-
-  useEffect(() => {
-    const nextUrl = `${window.location.pathname}?${toSearchParams(state, activeSortId).toString()}`
-    window.history.replaceState(null, '', nextUrl)
-  }, [state, activeSortId])
-
-  useEffect(() => {
-    const next = persistFromCalculator(sortsCollectionRef.current, state, activeSortId)
-    sortsCollectionRef.current = next
-  }, [state, activeSortId])
-
   const activeSort = useMemo(
     () => sorts.find((s) => s.id === activeSortId) ?? sorts[0],
     [sorts, activeSortId],
   )
+
+  useEffect(() => {
+    const collection = persistFromCalculator(
+      sortsCollectionRef.current,
+      state,
+      activeSortId,
+      activeSort?.notes,
+    )
+    sortsCollectionRef.current = collection
+    setSortsSavedAt(Date.now())
+    const params = toSearchParams(state, activeSortId)
+    const encoded = encodeSortsToUrl(collection)
+    if (encoded) params.set('sortsData', encoded)
+    const nextUrl = `${window.location.pathname}?${params.toString()}`
+    window.history.replaceState(null, '', nextUrl)
+  }, [state, activeSortId, sorts, activeSort?.notes])
 
   const sortCompareResults = useMemo(() => {
     const farm = extractFarmSettings(state)
@@ -905,10 +633,29 @@ function App() {
     })
   }, [state, sorts, activeSortId])
 
+  const farmSettings = useMemo(() => extractFarmSettings(state), [state])
+
+  const sortEconRows = useMemo(() => {
+    const sortsWithCurrent = sorts.map((s) =>
+      s.id === activeSortId ? { ...s, params: extractSortParams(state) } : s,
+    )
+    return buildSortEconRows(sortsWithCurrent, farmSettings, state.cropType, econ)
+  }, [sorts, state, activeSortId, farmSettings, state.cropType, econ])
+
+  const sortInsights = useMemo(
+    () =>
+      computeSortInsights(
+        sortCompareResults,
+        state.cropType,
+        sortEconRows.map((row) => ({ sortId: row.sort.id, econ: row.econ })),
+      ),
+    [sortCompareResults, sortEconRows, state.cropType],
+  )
+
   const selectSort = useCallback(
     (id: string) => {
       if (id === activeSortId) return
-      const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId)
+      const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId, activeSort?.notes)
       sortsCollectionRef.current = saved
       setSorts(saved.sorts)
       const target = saved.sorts.find((s) => s.id === id)
@@ -922,7 +669,7 @@ function App() {
   )
 
   const handleAddSort = useCallback(() => {
-    const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId)
+    const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId, activeSort?.notes)
     const next = addSort(saved)
     if (!next) {
       showToast('Можно сохранить не более 6 сортов.')
@@ -938,7 +685,7 @@ function App() {
 
   const handleRemoveSort = useCallback(
     (id: string) => {
-      const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId)
+      const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId, activeSort?.notes)
       const next = removeSort(saved, id)
       if (!next) {
         showToast('Нужен хотя бы один сорт.')
@@ -965,6 +712,64 @@ function App() {
     sortsCollectionRef.current = next
     setSorts(next.sorts)
   }, [])
+
+  const handleDuplicateSort = useCallback(
+    (id: string) => {
+      const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId, activeSort?.notes)
+      const next = duplicateSort(saved, id)
+      if (!next) {
+        showToast('Можно сохранить не более 6 сортов.')
+        return
+      }
+      sortsCollectionRef.current = next
+      setSorts(next.sorts)
+      const newSort = next.sorts[next.sorts.length - 1]
+      setActiveSortId(newSort.id)
+      setStateRaw(mergeToCalculatorState(extractFarmSettings(state), newSort.params))
+      showToast(`Скопирован: ${newSort.name}`)
+    },
+    [activeSortId, state, showToast, activeSort?.notes],
+  )
+
+  const handleNotesChange = useCallback(
+    (notes: string) => {
+      const next = updateSortNotes(sortsCollectionRef.current, activeSortId, notes)
+      sortsCollectionRef.current = next
+      setSorts(next.sorts)
+    },
+    [activeSortId],
+  )
+
+  const handleExportSorts = useCallback(() => {
+    const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId, activeSort?.notes)
+    const blob = new Blob([exportSortsJson(saved)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'berry-sorts.json'
+    link.click()
+    URL.revokeObjectURL(url)
+    showToast('Сорта экспортированы в JSON.')
+  }, [activeSortId, state, showToast, activeSort?.notes])
+
+  const handleImportSorts = useCallback(
+    (text: string) => {
+      const imported = importSortsJson(text)
+      if (!imported) {
+        showToast('Не удалось прочитать файл сортов.')
+        return
+      }
+      const saved = persistFromCalculator(sortsCollectionRef.current, state, activeSortId, activeSort?.notes)
+      const next = replaceSortsCollection({ ...imported, farm: saved.farm })
+      sortsCollectionRef.current = next
+      setSorts(next.sorts)
+      setActiveSortId(next.activeSortId)
+      const target = next.sorts.find((s) => s.id === next.activeSortId) ?? next.sorts[0]
+      setStateRaw(mergeToCalculatorState(next.farm, target.params))
+      showToast(`Импортировано сортов: ${next.sorts.length}`)
+    },
+    [activeSortId, state, showToast, activeSort?.notes],
+  )
 
   const updateCommonField = (
     key: 'density' | 'farmAreaM2' | 'uncertaintyPct',
@@ -1315,8 +1120,8 @@ function App() {
               <button type="button" onClick={() => setCompareSortsOpen((open) => !open)}>
                 {compareSortsOpen ? 'Скрыть сравнение' : 'Сравнить сорта'}
               </button>
-              <button type="button" onClick={handleAddSort}>
-                + Сорт
+              <button type="button" className="primary" onClick={handleAddSort}>
+                ➕ Добавить свой сорт
               </button>
             </div>
           </div>
@@ -1336,6 +1141,13 @@ function App() {
         ))}
       </div>
 
+      <MobileSortsStrip
+        sorts={sorts}
+        activeSortId={activeSortId}
+        onSelect={selectSort}
+        onAdd={handleAddSort}
+      />
+
       <section className="layout">
         <aside className="panel no-print-panel">
           <h2>Параметры</h2>
@@ -1343,12 +1155,18 @@ function App() {
           <SortsBar
             sorts={sorts}
             activeSortId={activeSortId}
+            activeNotes={activeSort?.notes ?? ''}
             compareOpen={compareSortsOpen}
+            savedHint={sortsSavedAt ? 'Сохранено' : undefined}
             onSelect={selectSort}
             onAdd={handleAddSort}
+            onDuplicate={handleDuplicateSort}
             onRemove={handleRemoveSort}
             onRename={handleRenameSort}
+            onNotesChange={handleNotesChange}
             onToggleCompare={() => setCompareSortsOpen((open) => !open)}
+            onExportJson={handleExportSorts}
+            onImportJson={handleImportSorts}
           />
 
           {!clientMode && (
@@ -1807,6 +1625,16 @@ function App() {
               results={sortCompareResults}
               activeSortId={activeSortId}
               cropType={state.cropType}
+              insights={sortInsights}
+              onSelect={selectSort}
+            />
+          )}
+
+          {compareSortsOpen && sortEconRows.length > 0 && (
+            <SortEconComparePanel
+              rows={sortEconRows}
+              insights={sortInsights}
+              activeSortId={activeSortId}
               onSelect={selectSort}
             />
           )}
@@ -1954,8 +1782,10 @@ function App() {
             <BerryEconPanel
               econ={econ}
               onChange={setEcon}
-              annualKg={farmAnnualKgTotal}
-              monthlyKg={farmMonthlyKgTotal}
+              farmAreaM2={state.farmAreaM2}
+              cropType={state.cropType}
+              sdResult={sdResult}
+              dnResult={dnResult}
             />
           )}
 

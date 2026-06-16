@@ -21,6 +21,7 @@ export interface SortParams {
 export interface SortProfile {
   id: string
   name: string
+  notes: string
   params: SortParams
 }
 
@@ -73,10 +74,16 @@ const newSortIdSuffix = (): string => {
   return Math.random().toString(36).slice(2, 10)
 }
 
-export function createSortProfile(index: number, params: SortParams = DEFAULT_SORT_PARAMS): SortProfile {
+export function createSortProfile(
+  index: number,
+  params: SortParams = DEFAULT_SORT_PARAMS,
+  name?: string,
+  notes = '',
+): SortProfile {
   return {
     id: `sort-${index}-${newSortIdSuffix()}`,
-    name: `Сорт ${index}`,
+    name: name?.trim().slice(0, 40) || `Сорт ${index}`,
+    notes: notes.slice(0, 500),
     params: JSON.parse(JSON.stringify(params)) as SortParams,
   }
 }
