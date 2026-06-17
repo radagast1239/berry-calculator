@@ -14,6 +14,7 @@ import {
   YAxis,
 } from 'recharts'
 import './App.css'
+import { CHART } from './chartColors'
 import type { CropType, Scenario, Triple } from './types'
 import type { CalculatorState, CropResult } from './calculatorTypes'
 import { migrateCalculatorState, MODEL_VERSION, parseModelVersion } from './modelVersion'
@@ -516,7 +517,7 @@ function App() {
   }, [showToast])
 
   useEffect(() => {
-    document.title = 'Калькулятор урожая клубники · Daogreen'
+    document.title = 'Калькулятор урожайности клубники · Daogreen'
   }, [])
 
   useEffect(() => {
@@ -1073,35 +1074,49 @@ function App() {
       )}
 
       <header className="header no-print">
-        <div>
-          <h1>Калькулятор урожайности клубники</h1>
-          <p className="sub brand-line">
-            <strong>Daogreen</strong> — проектирование и запуск вертикальных ферм. Расчёт валового, биологического
-            и товарного урожая КСД и НСД с настройкой сценариев, волн и рисков.
-          </p>
+        <div className="header-top">
+          <div className="header-brand">
+            <span className="brand-mark" aria-hidden="true">
+              DG
+            </span>
+            <div>
+              <p className="brand-eyebrow">Daogreen</p>
+              <h1>Калькулятор урожайности клубники</h1>
+            </div>
+          </div>
+
+          <div className="header-tools">
+            <label className="client-toggle">
+              <input
+                type="checkbox"
+                checked={clientMode}
+                onChange={(event) => setClientMode(event.target.checked)}
+              />
+              Режим для клиента
+            </label>
+            <button type="button" className="ghost-btn" onClick={() => setWizardOpen(true)}>
+              Мастер
+            </button>
+            <button
+              type="button"
+              className="ghost-btn header-add-sort"
+              onClick={handleAddSort}
+              disabled={sorts.length >= MAX_SORTS}
+            >
+              + Сорт
+            </button>
+            {canUndo && (
+              <button type="button" className="ghost-btn" onClick={undo} title="Ctrl+Z">
+                Отменить
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="header-tools">
-          <label className="client-toggle">
-            <input
-              type="checkbox"
-              checked={clientMode}
-              onChange={(event) => setClientMode(event.target.checked)}
-            />
-            Режим для клиента
-          </label>
-          <button type="button" className="ghost-btn" onClick={() => setWizardOpen(true)}>
-            Мастер
-          </button>
-          <button type="button" className="ghost-btn header-add-sort" onClick={handleAddSort} disabled={sorts.length >= MAX_SORTS}>
-            + Сорт
-          </button>
-          {canUndo && (
-            <button type="button" className="ghost-btn" onClick={undo} title="Ctrl+Z">
-              Отменить
-            </button>
-          )}
-        </div>
+        <p className="header-lead">
+          Проектирование и запуск вертикальных ферм. Расчёт валового, биологического и товарного урожая КСД и НСД
+          с настройкой сценариев, волн и рисков.
+        </p>
 
         <div className="switchers">
           <div className="toggle">
@@ -1664,11 +1679,11 @@ function App() {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <ReferenceLine y={40} stroke="#6b7280" strokeDasharray="4 4" label="Artechno 40" />
-                  <ReferenceLine y={41} stroke="#16a34a" strokeDasharray="4 4" label="iFarm 41" />
-                  <ReferenceLine y={45} stroke="#166534" strokeDasharray="4 4" label="iFarm 45" />
-                  <Bar dataKey="КСД" fill="#ec4899" />
-                  <Bar dataKey="НСД" fill="#4f46e5" />
+                  <ReferenceLine y={40} stroke={CHART.grid} strokeDasharray="4 4" label="Artechno 40" />
+                  <ReferenceLine y={41} stroke={CHART.ref} strokeDasharray="4 4" label="iFarm 41" />
+                  <ReferenceLine y={45} stroke={CHART.refDark} strokeDasharray="4 4" label="iFarm 45" />
+                  <Bar dataKey="КСД" fill={CHART.sd} />
+                  <Bar dataKey="НСД" fill={CHART.dn} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1761,10 +1776,10 @@ function App() {
                   />
                   <Legend />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
-                    <Bar dataKey="КСД" fill="#ec4899" name="КСД, кг с фермы" />
+                    <Bar dataKey="КСД" fill={CHART.sd} name="КСД, кг с фермы" />
                   )}
                   {(state.cropType === 'DN' || state.cropType === 'both') && (
-                    <Bar dataKey="НСД" fill="#4f46e5" name="НСД, кг с фермы" />
+                    <Bar dataKey="НСД" fill={CHART.dn} name="НСД, кг с фермы" />
                   )}
                 </BarChart>
               </ResponsiveContainer>
@@ -1800,8 +1815,8 @@ function App() {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="КСД" fill="#f472b6" />
-                  <Bar dataKey="НСД" fill="#818cf8" />
+                  <Bar dataKey="КСД" fill={CHART.sdSoft} />
+                  <Bar dataKey="НСД" fill={CHART.dnSoft} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1839,7 +1854,7 @@ function App() {
                   <XAxis dataKey="month" />
                   <YAxis />
                   <Tooltip />
-                  <Bar dataKey="marketKg" fill="#0ea5e9" />
+                  <Bar dataKey="marketKg" fill={CHART.sky} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1875,7 +1890,7 @@ function App() {
                   <Line
                     type="monotone"
                     dataKey="marketKgPerMonth"
-                    stroke="#fb7185"
+                    stroke={CHART.berry}
                     strokeWidth={2}
                     dot={false}
                     name="кг/м²/мес"
