@@ -9,7 +9,6 @@ export function SortsBar({
   compareOpen,
   savedHint,
   onSelect,
-  onAdd,
   onDuplicate,
   onRemove,
   onRename,
@@ -24,7 +23,6 @@ export function SortsBar({
   compareOpen: boolean
   savedHint?: string
   onSelect: (id: string) => void
-  onAdd: () => void
   onDuplicate: (id: string) => void
   onRemove: (id: string) => void
   onRename: (id: string, name: string) => void
@@ -63,10 +61,6 @@ export function SortsBar({
         <h3>Мои сорта ({sorts.length}/{MAX_SORTS})</h3>
         {savedHint && <span className="sorts-saved-hint">{savedHint}</span>}
       </div>
-
-      <button type="button" className="btn-add-sort primary" onClick={onAdd} disabled={sorts.length >= MAX_SORTS}>
-        ➕ Добавить свой сорт
-      </button>
 
       <p className="hint">
         До {MAX_SORTS} сортов. Параметры урожая сохраняются автоматически в браузере. Общие настройки фермы (плотность,

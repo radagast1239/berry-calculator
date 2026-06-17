@@ -41,6 +41,7 @@ import { SortsBar } from './SortsBar'
 import { computeSortInsights } from './sortInsights'
 import { extractFarmSettings, extractSortParams, mergeToCalculatorState } from './sortTypes'
 import type { SortsCollection } from './sortTypes'
+import { MAX_SORTS } from './sortTypes'
 import { encodeSortsToUrl, exportSortsJson, importSortsJson } from './sortUrlCodec'
 import {
   addSort,
@@ -1092,8 +1093,8 @@ function App() {
           <button type="button" className="ghost-btn" onClick={() => setWizardOpen(true)}>
             Мастер
           </button>
-          <button type="button" className="btn-add-sort primary header-add-sort" onClick={handleAddSort}>
-            ➕ Добавить свой сорт
+          <button type="button" className="ghost-btn header-add-sort" onClick={handleAddSort} disabled={sorts.length >= MAX_SORTS}>
+            + Сорт
           </button>
           {canUndo && (
             <button type="button" className="ghost-btn" onClick={undo} title="Ctrl+Z">
@@ -1122,9 +1123,6 @@ function App() {
             <div className="sort-quick-actions">
               <button type="button" onClick={() => setCompareSortsOpen((open) => !open)}>
                 {compareSortsOpen ? 'Скрыть сравнение' : 'Сравнить сорта'}
-              </button>
-              <button type="button" className="btn-add-sort primary" onClick={handleAddSort}>
-                ➕ Добавить свой сорт
               </button>
             </div>
           </div>
@@ -1162,7 +1160,6 @@ function App() {
             compareOpen={compareSortsOpen}
             savedHint={sortsSavedAt ? 'Сохранено' : undefined}
             onSelect={selectSort}
-            onAdd={handleAddSort}
             onDuplicate={handleDuplicateSort}
             onRemove={handleRemoveSort}
             onRename={handleRenameSort}

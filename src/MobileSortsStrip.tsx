@@ -26,7 +26,12 @@ export function MobileSortsStrip({
           </button>
         ))}
       </div>
-      <button type="button" className="mobile-sorts-add primary" onClick={onAdd} disabled={sorts.length >= MAX_SORTS}>
+      <button
+        type="button"
+        className="ghost-btn mobile-sorts-add"
+        onClick={onAdd}
+        disabled={sorts.length >= MAX_SORTS}
+      >
         + Сорт
       </button>
     </div>
