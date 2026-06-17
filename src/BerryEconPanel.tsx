@@ -4,6 +4,7 @@ import { sumFarmKgForScenario } from './calculatorEngine'
 import type { CropResult } from './calculatorTypes'
 import type { CropType } from './types'
 import { HintLabel } from './uiHelpers'
+import { fmtFarmMoYear, YIELD_COL } from './yieldFormat'
 
 function fmtRub(value: number): string {
   if (!Number.isFinite(value)) return '—'
@@ -113,7 +114,7 @@ export function BerryEconPanel({
           <thead>
             <tr>
               <th>Сценарий</th>
-              <th>кг/год</th>
+              <th>{YIELD_COL.farm}</th>
               <th>Выручка</th>
               <th>EBITDA</th>
               <th>Прибыль</th>
@@ -128,7 +129,7 @@ export function BerryEconPanel({
               return (
                 <tr key={scenario} className={scenario === 'avg' ? 'sensitivity-base' : ''}>
                   <td>{label}</td>
-                  <td>{Math.round(scenarios[scenario].annualKg)}</td>
+                  <td>{fmtFarmMoYear(scenarios[scenario].monthlyKg, scenarios[scenario].annualKg)}</td>
                   <td>{fmtRub(r.revenueRubPerYear)}</td>
                   <td>{fmtRub(r.ebitdaRubPerYear)}</td>
                   <td><strong>{fmtRub(r.netProfitRubPerYear)}</strong></td>

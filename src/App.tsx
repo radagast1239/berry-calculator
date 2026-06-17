@@ -15,6 +15,7 @@ import {
 } from 'recharts'
 import './App.css'
 import { CHART } from './chartColors'
+import { fmtFarmMoYear, fmtSqmMoYear, yearlyToMonthly, YIELD_COL } from './yieldFormat'
 import type { CropType, Scenario, Triple } from './types'
 import type { CalculatorState, CropResult } from './calculatorTypes'
 import { migrateCalculatorState, MODEL_VERSION, parseModelVersion } from './modelVersion'
@@ -351,8 +352,12 @@ function BenchmarkBar({ crop, value }: { crop: 'SD' | 'DN'; value: number }) {
         <div className="marker" style={{ left: `${marker}%` }} />
       </div>
       <p>
-        {BENCHMARK_LEVEL_LABELS[level]} · ориентир: подтверждено {benchmark.confirmed[0]}-{benchmark.confirmed[1]} ·
-        потолок {benchmark.ceiling[0]}-{benchmark.ceiling[1]} кг/м²/год (поверхность)
+        {BENCHMARK_LEVEL_LABELS[level]} · ориентир: подтверждено{' '}
+        {fmtSqmMoYear(yearlyToMonthly(benchmark.confirmed[0]), benchmark.confirmed[0], 1, 0)}–
+        {fmtSqmMoYear(yearlyToMonthly(benchmark.confirmed[1]), benchmark.confirmed[1], 1, 0)} · потолок{' '}
+        {fmtSqmMoYear(yearlyToMonthly(benchmark.ceiling[0]), benchmark.ceiling[0], 1, 0)}–
+        {fmtSqmMoYear(yearlyToMonthly(benchmark.ceiling[1]), benchmark.ceiling[1], 1, 0)} кг/м²·мес · кг/м²/год
+        (поверхность)
       </p>
     </div>
   )
@@ -376,12 +381,12 @@ function ScenarioCards({
         <article className={`scenario-card scenario-${scenario} benchmark-card-${level}`} key={scenario}>
           <h4>{SCENARIO_LABELS[scenario]}</h4>
           <p className={`scenario-main benchmark-value-${level}`}>
-            {formatValue(result[scenario].marketM2PerYear, 1)}
-            <span> кг/м² полезной посевной площади / год</span>
+            {fmtSqmMoYear(result[scenario].marketM2PerMonth, result[scenario].marketM2PerYear)}
+            <span> кг/м²·мес · кг/м²/год (полезная посевная площадь)</span>
           </p>
           <p className="scenario-sub">
-            Товарный: {formatValue(result[scenario].marketM2PerMonth, 1)} кг/м²/мес · валовый:{' '}
-            {formatValue(result[scenario].grossShelfM2PerYear, 1)} кг/м²/год
+            Валовый: {fmtSqmMoYear(yearlyToMonthly(result[scenario].grossShelfM2PerYear), result[scenario].grossShelfM2PerYear)} кг/м²
+            поверхности·мес · кг/м²/год
           </p>
           <p className="scenario-sub">
             Циклов/год: {formatValue(result[scenario].cyclesPerYear, 2)} · с куста/год:{' '}
@@ -423,11 +428,10 @@ function ResultsTable({
             <tr>
               <th>Сценарий</th>
               <th>Циклов/год</th>
-              <th>Валовый, кг/м² поверхности/год</th>
-              <th>Биологический, кг/м² поверхности/год</th>
-              <th>Товарный, кг/м² поверхности/год</th>
-              <th>Ферма, товарный кг/год</th>
-              <th>Ферма, товарный кг/мес</th>
+              <th>Валовый, кг/м² поверхности·мес · кг/м²/год</th>
+              <th>Биологический, кг/м² поверхности·мес · кг/м²/год</th>
+              <th>Товарный, кг/м² поверхности·мес · кг/м²/год</th>
+              <th>Ферма, товарный {YIELD_COL.farm}</th>
             </tr>
           </thead>
           <tbody>
@@ -435,11 +439,27 @@ function ResultsTable({
               <tr key={scenario}>
                 <td>{SCENARIO_LABELS[scenario]}</td>
                 <td>{formatValue(result[scenario].cyclesPerYear, 2)}</td>
-                <td>{formatValue(result[scenario].grossShelfM2PerYear, 1)}</td>
-                <td>{formatValue(result[scenario].bioShelfM2PerYear, 1)}</td>
-                <td>{formatValue(result[scenario].marketShelfM2PerYear, 1)}</td>
-                <td>{formatValue(result[scenario].farmMarketAnnualKg, 1)}</td>
-                <td>{formatValue(result[scenario].farmMarketMonthlyKg, 1)}</td>
+                <td>
+                  {fmtSqmMoYear(
+                    yearlyToMonthly(result[scenario].grossShelfM2PerYear),
+                    result[scenario].grossShelfM2PerYear,
+                  )}
+                </td>
+                <td>
+                  {fmtSqmMoYear(
+                    yearlyToMonthly(result[scenario].bioShelfM2PerYear),
+                    result[scenario].bioShelfM2PerYear,
+                  )}
+                </td>
+                <td>
+                  {fmtSqmMoYear(
+                    yearlyToMonthly(result[scenario].marketShelfM2PerYear),
+                    result[scenario].marketShelfM2PerYear,
+                  )}
+                </td>
+                <td>
+                  {fmtFarmMoYear(result[scenario].farmMarketMonthlyKg, result[scenario].farmMarketAnnualKg, 1, 1)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -837,11 +857,14 @@ function App() {
         'Тип',
         'Сценарий',
         'Циклов/год',
+        'Валовый кг/м2 поверхности·мес',
         'Валовый кг/м2 поверхности/год',
+        'Биологический кг/м2 поверхности·мес',
         'Биологический кг/м2 поверхности/год',
+        'Товарный кг/м2 поверхности·мес',
         'Товарный кг/м2 поверхности/год',
-        'Ферма товарный кг/год',
         'Ферма товарный кг/мес',
+        'Ферма товарный кг/год',
         'НСД: продуктивные месяцы',
         'НСД: товарный кг/м2 в продуктивный месяц',
       ].join(';'),
@@ -854,11 +877,14 @@ function App() {
             crop,
             SCENARIO_LABELS[scenario],
             formatValue(result[scenario].cyclesPerYear, 2),
+            formatValue(yearlyToMonthly(result[scenario].grossShelfM2PerYear), 2),
             formatValue(result[scenario].grossShelfM2PerYear, 2),
+            formatValue(yearlyToMonthly(result[scenario].bioShelfM2PerYear), 2),
             formatValue(result[scenario].bioShelfM2PerYear, 2),
+            formatValue(yearlyToMonthly(result[scenario].marketShelfM2PerYear), 2),
             formatValue(result[scenario].marketShelfM2PerYear, 2),
-            formatValue(result[scenario].farmMarketAnnualKg, 2),
             formatValue(result[scenario].farmMarketMonthlyKg, 2),
+            formatValue(result[scenario].farmMarketAnnualKg, 2),
             formatValue(result[scenario].productiveMonths, 2),
             formatValue(result[scenario].productiveMonthMarketKg, 2),
           ].join(';'),
@@ -913,11 +939,11 @@ function App() {
           { label: 'Площадь фермы', value: `${state.farmAreaM2} м²` },
           {
             label: 'КСД (средний)',
-            value: `${formatValue(sdResult.avg.marketM2PerYear, 1)} кг/м²/год`,
+            value: `${fmtSqmMoYear(sdResult.avg.marketM2PerMonth, sdResult.avg.marketM2PerYear)} кг/м²·мес · кг/м²/год`,
           },
           {
             label: 'НСД (средний)',
-            value: `${formatValue(dnResult.avg.marketM2PerYear, 1)} кг/м²/год`,
+            value: `${fmtSqmMoYear(dnResult.avg.marketM2PerMonth, dnResult.avg.marketM2PerYear)} кг/м²·мес · кг/м²/год`,
           },
         ],
       })
@@ -1670,7 +1696,7 @@ function App() {
           )}
 
           <section className="chart-card" id="pdf-sec-chart-compare">
-            <h3>Сравнение КСД и НСД (товарный урожай, кг/м² поверхности в год)</h3>
+            <h3>Сравнение КСД и НСД (товарный урожай, кг/м²·мес · кг/м²/год)</h3>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height={290}>
                 <BarChart data={chartData}>
@@ -1709,14 +1735,14 @@ function App() {
                     <th>Вариант</th>
                     {(state.cropType === 'SD' || state.cropType === 'both') && (
                       <>
-                        <th>КСД, кг/м²/год</th>
-                        <th>КСД, кг/год фермы</th>
+                        <th>КСД, {YIELD_COL.sqm}</th>
+                        <th>КСД, {YIELD_COL.farm} фермы</th>
                       </>
                     )}
                     {(state.cropType === 'DN' || state.cropType === 'both') && (
                       <>
-                        <th>НСД, кг/м²/год</th>
-                        <th>НСД, кг/год фермы</th>
+                        <th>НСД, {YIELD_COL.sqm}</th>
+                        <th>НСД, {YIELD_COL.farm} фермы</th>
                       </>
                     )}
                   </tr>
@@ -1727,14 +1753,14 @@ function App() {
                       <td>{line.label}</td>
                       {(state.cropType === 'SD' || state.cropType === 'both') && (
                         <>
-                          <td>{formatValue(line.sd, 1)}</td>
-                          <td>{formatValue(line.sdFarmKg, 0)}</td>
+                          <td>{fmtSqmMoYear(line.sdM2PerMonth, line.sd)}</td>
+                          <td>{fmtFarmMoYear(line.sdFarmMonthlyKg, line.sdFarmKg)}</td>
                         </>
                       )}
                       {(state.cropType === 'DN' || state.cropType === 'both') && (
                         <>
-                          <td>{formatValue(line.dn, 1)}</td>
-                          <td>{formatValue(line.dnFarmKg, 0)}</td>
+                          <td>{fmtSqmMoYear(line.dnM2PerMonth, line.dn)}</td>
+                          <td>{fmtFarmMoYear(line.dnFarmMonthlyKg, line.dnFarmKg)}</td>
                         </>
                       )}
                     </tr>
@@ -1806,7 +1832,7 @@ function App() {
 
           {!clientMode && (
           <section className="chart-card" id="pdf-sec-chart-uncertainty">
-            <h3>Диапазон неопределенности 10/50/90% (товарный кг/м² полезной посевной площади в год)</h3>
+            <h3>Диапазон неопределенности 10/50/90% (товарный кг/м²·мес · кг/м²/год)</h3>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={percentileChartData}>

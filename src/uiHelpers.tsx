@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import type { CropType } from './types'
+import { fmtSqmMoYear, yearlyToMonthly } from './yieldFormat'
 
 export type BenchmarkLevel = 'low' | 'ok' | 'warn' | 'high'
 
@@ -83,11 +84,16 @@ export function StickySummary({
         <strong>Итог (средний сценарий)</strong>
         {cropType === 'both' && (
           <span>
-            КСД: {sdAvg.toFixed(1)} · НСД: {dnAvg.toFixed(1)} кг/м² полезной посевной площади/год
+            КСД: {fmtSqmMoYear(yearlyToMonthly(sdAvg), sdAvg)} · НСД:{' '}
+            {fmtSqmMoYear(yearlyToMonthly(dnAvg), dnAvg)} кг/м²·мес · кг/м²/год
           </span>
         )}
-        {cropType === 'SD' && <span>КСД: {sdAvg.toFixed(1)} кг/м² полезной посевной площади/год</span>}
-        {cropType === 'DN' && <span>НСД: {dnAvg.toFixed(1)} кг/м² полезной посевной площади/год</span>}
+        {cropType === 'SD' && (
+          <span>КСД: {fmtSqmMoYear(yearlyToMonthly(sdAvg), sdAvg)} кг/м²·мес · кг/м²/год</span>
+        )}
+        {cropType === 'DN' && (
+          <span>НСД: {fmtSqmMoYear(yearlyToMonthly(dnAvg), dnAvg)} кг/м²·мес · кг/м²/год</span>
+        )}
       </div>
     </div>
   )

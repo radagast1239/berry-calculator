@@ -3,6 +3,7 @@ import type { CropType } from './types'
 import type { SortProfile } from './sortTypes'
 import type { BerryEconAllScenarios } from './berryEcon'
 import { YIELD_BENCHMARKS } from './benchmarks'
+import { fmtSqmMoYear } from './yieldFormat'
 
 export interface SortYieldRow {
   sort: SortProfile
@@ -55,8 +56,20 @@ export function computeSortInsights(
     : null
 
   const parts: string[] = []
-  if (bestSd) parts.push(`лучший по КСД — «${bestSd.name}» (${bestSd.value.toFixed(1)} кг/м²/год)`)
-  if (bestDn) parts.push(`лучший по НСД — «${bestDn.name}» (${bestDn.value.toFixed(1)} кг/м²/год)`)
+  if (bestSd) {
+    const row = rows.find((r) => r.sort.id === bestSd.id)
+    const mo = row ? row.sd.avg.marketM2PerMonth : bestSd.value / 12
+    parts.push(
+      `лучший по КСД — «${bestSd.name}» (${fmtSqmMoYear(mo, bestSd.value)} кг/м²·мес · кг/м²/год)`,
+    )
+  }
+  if (bestDn) {
+    const row = rows.find((r) => r.sort.id === bestDn.id)
+    const mo = row ? row.dn.avg.marketM2PerMonth : bestDn.value / 12
+    parts.push(
+      `лучший по НСД — «${bestDn.name}» (${fmtSqmMoYear(mo, bestDn.value)} кг/м²·мес · кг/м²/год)`,
+    )
+  }
   if (bestProfit) {
     parts.push(
       `лучший по прибыли — «${bestProfit.name}» (${Math.round(bestProfit.value).toLocaleString('ru-RU')} ₽/год)`,

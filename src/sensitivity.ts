@@ -6,8 +6,12 @@ export interface SensitivityLine {
   label: string
   sd: number
   dn: number
+  sdM2PerMonth: number
+  dnM2PerMonth: number
   sdFarmKg: number
   dnFarmKg: number
+  sdFarmMonthlyKg: number
+  dnFarmMonthlyKg: number
 }
 
 const scaleTriple = (triple: Triple, factor: number): Triple => ({
@@ -71,8 +75,12 @@ export function buildSensitivityLines(
       label: row.label,
       sd: sdResult.marketM2PerYear,
       dn: dnResult.marketM2PerYear,
+      sdM2PerMonth: sdResult.marketM2PerMonth,
+      dnM2PerMonth: dnResult.marketM2PerMonth,
       sdFarmKg: sdResult.farmMarketAnnualKg,
       dnFarmKg: dnResult.farmMarketAnnualKg,
+      sdFarmMonthlyKg: sdResult.farmMarketMonthlyKg,
+      dnFarmMonthlyKg: dnResult.farmMarketMonthlyKg,
     }
   })
 }

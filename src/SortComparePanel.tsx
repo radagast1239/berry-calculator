@@ -1,13 +1,9 @@
-import type { SortProfile } from './sortTypes'
+import { fmtSqmMoYear, YIELD_COL } from './yieldFormat'
 import type { CropResult } from './calculatorTypes'
 import type { CropType } from './types'
+import type { SortProfile } from './sortTypes'
 import { getBenchmarkLevel, BENCHMARK_LEVEL_LABELS } from './uiHelpers'
 import { computeSortInsights, YIELD_BENCHMARKS, type SortInsights } from './sortInsights'
-
-function fmt(value: number, digits = 1): string {
-  if (!Number.isFinite(value)) return '—'
-  return value.toFixed(digits)
-}
 
 export function SortComparePanel({
   results,
@@ -38,13 +34,13 @@ export function SortComparePanel({
               <th>Сорт</th>
               {showSd && (
                 <>
-                  <th>КСД, кг/м²/год</th>
+                  <th>КСД, {YIELD_COL.sqm}</th>
                   <th>Ориентир КСД</th>
                 </>
               )}
               {showDn && (
                 <>
-                  <th>НСД, кг/м²/год</th>
+                  <th>НСД, {YIELD_COL.sqm}</th>
                   <th>Ориентир НСД</th>
                 </>
               )}
@@ -76,13 +72,13 @@ export function SortComparePanel({
                   </td>
                   {showSd && (
                     <>
-                      <td>{fmt(sd.avg.marketM2PerYear)}</td>
+                      <td>{fmtSqmMoYear(sd.avg.marketM2PerMonth, sd.avg.marketM2PerYear)}</td>
                       <td className={`benchmark-value-${sdLevel}`}>{BENCHMARK_LEVEL_LABELS[sdLevel]}</td>
                     </>
                   )}
                   {showDn && (
                     <>
-                      <td>{fmt(dn.avg.marketM2PerYear)}</td>
+                      <td>{fmtSqmMoYear(dn.avg.marketM2PerMonth, dn.avg.marketM2PerYear)}</td>
                       <td className={`benchmark-value-${dnLevel}`}>{BENCHMARK_LEVEL_LABELS[dnLevel]}</td>
                     </>
                   )}
