@@ -474,12 +474,42 @@
 }
 
 .pdf-staging .chart-wrap {
-  height: 260px !important;
-  min-height: 260px !important;
+  height: 300px !important;
+  min-height: 300px !important;
+  margin-bottom: 10px !important;
+  overflow: hidden;
+}
+
+.pdf-staging .chart-footnote,
+.pdf-staging .chart-card > .hint {
+  margin-top: 16px !important;
+  line-height: 1.55 !important;
+}
+
+.pdf-staging .chart-card,
+.pdf-staging .methods-card,
+.pdf-staging .model-limits-card {
+  overflow: visible;
+  height: auto;
+  min-height: 0;
+}
+
+.pdf-staging .model-disclaimer {
+  line-height: 1.55;
+  overflow: visible;
+}
+
+.pdf-staging .pdf-chart-footnote {
+  padding-top: 4px;
+}
+
+.pdf-staging .pdf-chart-header {
+  margin-bottom: 8px;
 }
 
 .chart-wrap-tall {
-  min-height: 300px;
+  height: 340px;
+  min-height: 340px;
 }
 
 .chart-tooltip {
@@ -1037,13 +1067,13 @@ button.primary:hover {
 }
 
 .chart-explain {
-  margin: 10px 0 12px;
-  padding: 10px 12px;
+  margin: 8px 0 14px;
+  padding: 12px 14px;
   border-radius: var(--dg-radius-sm);
   background: var(--dg-brand-softer);
   border: 1px solid var(--dg-border-soft);
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .chart-explain p {
@@ -1092,11 +1122,12 @@ button.primary:hover {
 }
 
 .model-disclaimer {
-  margin-top: 10px;
-  padding: 8px 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
   border-left: 3px solid var(--dg-brand);
   background: var(--dg-brand-softer);
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .pdf-staging .model-caveats {
@@ -1276,9 +1307,21 @@ button.primary:hover {
 }
 
 .hint {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   color: #4b5563;
   font-size: 13px;
+  line-height: 1.55;
+}
+
+.chart-card .chart-footnote {
+  margin-top: 16px;
+  padding-top: 2px;
+  clear: both;
+}
+
+.chart-card h3 {
+  margin: 0 0 10px;
+  line-height: 1.35;
 }
 
 details {
@@ -1308,12 +1351,12 @@ summary {
 .results {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .result-card,
 .chart-card {
-  padding: 12px;
+  padding: 16px;
 }
 
 .scenario-cards {
@@ -1447,7 +1490,8 @@ thead {
 
 .chart-wrap {
   width: 100%;
-  height: 280px;
+  height: 300px;
+  min-height: 300px;
 }
 
 .sources-card {

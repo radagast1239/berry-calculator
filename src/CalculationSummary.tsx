@@ -36,8 +36,9 @@ export function CalculationSummary({
             {state.farmAreaM2} м²
           </li>
           <li>
-            <strong>Качество:</strong> потери {state.kLosses}, риски {state.kPests}, товарная доля{' '}
-            {state.packout} → итоговый коэффициент {(state.kLosses * state.kPests * state.packout).toFixed(3)}
+            <strong>Качество:</strong> потери {state.kLosses}, риски {state.kPests}, доля товарной ягоды (средний){' '}
+            {state.packout.avg} → итоговый коэффициент{' '}
+            {(state.kLosses * state.kPests * state.packout.avg).toFixed(3)}
           </li>
           {showSd && (
             <li>

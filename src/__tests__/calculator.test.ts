@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { calcBerryEconomics, calcBerryEconomicsAllScenarios, totalCapexRub, DEFAULT_BERRY_ECON } from '../berryEcon'
-import { calculateCrop, sumFarmKgForScenario, buildDnMonthlyCalendar } from '../calculatorEngine'
+import { calculateCrop, sumFarmKgForScenario, buildDnMonthlyCalendar, buildSdMonthlyCalendar, getPackout, getEffectiveDnWaveShares } from '../calculatorEngine'
 import { AGRONOMIST_PURONEN_PRESET } from '../agronomistPresets'
 import { mergeToCalculatorState, DEFAULT_FARM, DEFAULT_SORT_PARAMS } from '../sortTypes'
 import { encodeSortsToUrl, decodeSortsFromUrl } from '../sortUrlCodec'
@@ -101,6 +101,56 @@ describe('buildDnMonthlyCalendar', () => {
     const min = Math.min(...cal)
     const max = Math.max(...cal)
     expect(max / min).toBeGreaterThan(1.3)
+  })
+})
+
+describe('buildSdMonthlyCalendar', () => {
+  it('varies SD months with weekly fruiting profile', () => {
+    const state = mergeToCalculatorState(
+      { ...DEFAULT_FARM, cropType: 'SD', density: 20 },
+      {
+        ...DEFAULT_SORT_PARAMS,
+        sdCycleMonths: { min: 4, avg: 4, max: 4 },
+        sdFruitingWeeks: 6,
+        sdWeeklyShares: [0.1, 0.1, 0.2, 0.35, 0.2, 0.05],
+      },
+    )
+    const cal = buildSdMonthlyCalendar(state, 'avg')
+    const annual = calculateCrop(state, 'SD').avg.marketShelfM2PerYear
+    expect(cal.reduce((sum, value) => sum + value, 0)).toBeCloseTo(annual, 1)
+    const min = Math.min(...cal.filter((v) => v > 0))
+    const max = Math.max(...cal)
+    expect(max / min).toBeGreaterThan(1.05)
+  })
+})
+
+describe('getPackout', () => {
+  it('uses per-scenario packout triple', () => {
+    const state = mergeToCalculatorState(
+      { ...DEFAULT_FARM, packout: { min: 0.6, avg: 0.8, max: 0.9 } },
+      DEFAULT_SORT_PARAMS,
+    )
+    expect(getPackout(state, 'min')).toBe(0.6)
+    expect(getPackout(state, 'avg')).toBe(0.8)
+    expect(getPackout(state, 'max')).toBe(0.9)
+    const sd = calculateCrop(state, 'SD')
+    expect(sd.min.marketM2PerYear).toBeLessThan(sd.max.marketM2PerYear)
+  })
+})
+
+describe('dnSeedlingMaterial', () => {
+  it('sets different first-wave share for tray vs frigo', () => {
+    const frigo = mergeToCalculatorState(
+      { ...DEFAULT_FARM, cropType: 'DN' },
+      { ...DEFAULT_SORT_PARAMS, ...AGRONOMIST_PURONEN_PRESET, dnSeedlingMaterial: 'frigo' },
+    )
+    const tray = mergeToCalculatorState(
+      { ...DEFAULT_FARM, cropType: 'DN' },
+      { ...DEFAULT_SORT_PARAMS, ...AGRONOMIST_PURONEN_PRESET, dnSeedlingMaterial: 'tray' },
+    )
+    const frigoShares = getEffectiveDnWaveShares(frigo, 'avg')
+    const trayShares = getEffectiveDnWaveShares(tray, 'avg')
+    expect(trayShares[0]).toBeGreaterThan(frigoShares[0])
   })
 })
 

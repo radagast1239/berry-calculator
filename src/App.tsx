@@ -5,7 +5,6 @@ import {
   BarChart,
   CartesianGrid,
   LabelList,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -20,7 +19,15 @@ import { ChartExplainBlock } from './ChartExplainBlock'
 import { ModelCaveatsBlock } from './ModelCaveatsBlock'
 import { CROP_RESULT_CAVEATS, MODEL_DISCLAIMER, MODEL_LIMITATIONS_BULLETS } from './modelCaveats'
 import { buildDenseAxis, buildMonthAxisTicks, compareDualAxes, maxOf } from './chartAxis'
-import { KgBarTopLabel, KgTooltip, SqmMonthTooltip, YieldBarTopLabel, YieldSqmTooltip } from './chartComponents'
+import {
+  CHART_MARGIN,
+  ChartLegend,
+  KgBarTopLabel,
+  KgTooltip,
+  SqmMonthTooltip,
+  YieldBarTopLabel,
+  YieldSqmTooltip,
+} from './chartComponents'
 import { AGRONOMIST_PURONEN_DENSITY, AGRONOMIST_PURONEN_PRESET, AGRONOMIST_PURONEN_SORT_NOTE } from './agronomistPresets'
 import { fmtFarmMoYear, fmtSqmMoYear, yearlyToMonthly, YIELD_COL } from './yieldFormat'
 import type { CropType, Scenario, Triple } from './types'
@@ -33,6 +40,8 @@ import { YIELD_BENCHMARKS } from './benchmarks'
 import {
   buildDnCycleWaveProfile,
   buildDnMonthlyCalendar,
+  buildSdCycleWaveProfile,
+  buildSdMonthlyCalendar,
   calculateCrop,
   clamp,
   computeScenarioRaw,
@@ -41,6 +50,8 @@ import {
   roundTo,
   simulatePercentiles,
 } from './calculatorEngine'
+import type { DnSeedlingMaterial } from './cropProfileConstants'
+import { DEFAULT_SD_WEEKLY_SHARES } from './cropProfileConstants'
 import { PdfExportDialog } from './PdfExportDialog'
 import { exportSectionsToPdf, waitForPdfPaint } from './pdfExport'
 import { MobileSortsStrip } from './MobileSortsStrip'
@@ -78,6 +89,7 @@ import {
 type TripleField =
   | 'sdYieldPerPlant'
   | 'sdCycleMonths'
+  | 'packout'
   | 'dnYieldPerPlant'
   | 'dnCycleMonths'
   | 'dnTurnaroundMonths'
@@ -85,9 +97,10 @@ type TripleField =
   | 'dnEstablishMonths'
   | 'dnWave1Share'
   | 'dnWave2Share'
+  | 'dnInflorescenceLoss'
   | 'berryMassG'
 
-type QualityField = 'kLosses' | 'kPests' | 'packout'
+type QualityField = 'kLosses' | 'kPests'
 
 const SCENARIOS: Scenario[] = ['min', 'avg', 'max']
 const MONTH_LABELS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек']
@@ -104,10 +117,12 @@ const DEFAULT_STATE: CalculatorState = {
   farmAreaM2: 1,
   kLosses: 1,
   kPests: 1,
-  packout: 1,
+  packout: { min: 1, avg: 1, max: 1 },
   uncertaintyPct: 8,
   sdYieldPerPlant: { min: 0.4, avg: 0.5, max: 0.6 },
   sdCycleMonths: { min: 3, avg: 3, max: 3 },
+  sdFruitingWeeks: 6,
+  sdWeeklyShares: [...DEFAULT_SD_WEEKLY_SHARES],
   dnYieldPerPlant: { min: 1, avg: 1.25, max: 1.5 },
   dnCycleMonths: { min: 6, avg: 6, max: 6 },
   dnTurnaroundMonths: { min: 0.2, avg: 0.2, max: 0.2 },
@@ -115,6 +130,8 @@ const DEFAULT_STATE: CalculatorState = {
   dnEstablishMonths: { min: 2, avg: 1.75, max: 1.5 },
   dnWave1Share: { min: 0.55, avg: 0.45, max: 0.4 },
   dnWave2Share: { min: 0.45, avg: 0.35, max: 0.35 },
+  dnSeedlingMaterial: 'manual',
+  dnInflorescenceLoss: { min: 0.15, avg: 0.05, max: 0 },
   dnManualProfileEnabled: false,
   dnManualMonthlyPlantYield: [0, 0, 0.06, 0.14, 0.2, 0.14, 0.06, 0.06, 0.14, 0.2, 0.14, 0.06],
   berryMassG: { min: 8, avg: 11, max: 15 },
@@ -164,6 +181,17 @@ const parseMonthlyProfile = (raw: string | null, fallback: number[]): number[] =
   return values
 }
 
+const parseWeeklyShares = (raw: string | null, fallback: number[]): number[] => {
+  if (!raw) return [...fallback]
+  const values = raw
+    .split(',')
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+    .map((value) => clamp(value, 0, 1))
+  if (values.length < 1) return [...fallback]
+  return values
+}
+
 const toSearchParams = (state: CalculatorState, sortId?: string): URLSearchParams => {
   const params = new URLSearchParams()
   params.set('v', String(MODEL_VERSION))
@@ -173,8 +201,10 @@ const toSearchParams = (state: CalculatorState, sortId?: string): URLSearchParam
   params.set('farmAreaM2', String(state.farmAreaM2))
   params.set('kLosses', String(state.kLosses))
   params.set('kPests', String(state.kPests))
-  params.set('packout', String(state.packout))
   params.set('uncertaintyPct', String(state.uncertaintyPct))
+  params.set('sdFruitingWeeks', String(state.sdFruitingWeeks))
+  params.set('sdWeeklyShares', state.sdWeeklyShares.map((v) => roundTo(v, 3)).join(','))
+  params.set('dnSeedlingMaterial', state.dnSeedlingMaterial)
   params.set('dnManualProfileEnabled', state.dnManualProfileEnabled ? '1' : '0')
   params.set(
     'dnManualMonthlyPlantYield',
@@ -182,6 +212,7 @@ const toSearchParams = (state: CalculatorState, sortId?: string): URLSearchParam
   )
 
   const triples: Array<[string, Triple]> = [
+    ['packout', state.packout],
     ['sd_yieldPerPlant', state.sdYieldPerPlant],
     ['sd_cycleMonths', state.sdCycleMonths],
     ['dn_yieldPerPlant', state.dnYieldPerPlant],
@@ -191,6 +222,7 @@ const toSearchParams = (state: CalculatorState, sortId?: string): URLSearchParam
     ['dn_establishMonths', state.dnEstablishMonths],
     ['dn_wave1Share', state.dnWave1Share],
     ['dn_wave2Share', state.dnWave2Share],
+    ['dn_inflorescenceLoss', state.dnInflorescenceLoss],
     ['berryMassG', state.berryMassG],
   ]
 
@@ -215,6 +247,8 @@ const parseStateFromUrl = (): CalculatorState => {
 
   const legacyReality = parseNumber(params, 'realityFactor', 1, 0.3, 1)
   const legacyPerFactor = roundTo(Math.sqrt(legacyReality), 3)
+
+  const legacyPackout = normalizeFactor(parseNumber(params, 'packout', DEFAULT_STATE.packout.avg, 0.4, 1), 0.4, 1)
 
   const parsed: CalculatorState = {
     cropType,
@@ -242,8 +276,12 @@ const parseStateFromUrl = (): CalculatorState => {
       0.3,
       1,
     ),
-    packout: normalizeFactor(parseNumber(params, 'packout', DEFAULT_STATE.packout, 0.5, 1), 0.5, 1),
+    packout: params.has('packout_min') || params.has('packout_avg')
+      ? parseTriple(params, 'packout', DEFAULT_STATE.packout, 0.4, 1)
+      : { min: legacyPackout, avg: legacyPackout, max: legacyPackout },
     uncertaintyPct: parseNumber(params, 'uncertaintyPct', DEFAULT_STATE.uncertaintyPct, 0, 30),
+    sdFruitingWeeks: parseNumber(params, 'sdFruitingWeeks', DEFAULT_STATE.sdFruitingWeeks, 1, 12),
+    sdWeeklyShares: parseWeeklyShares(params.get('sdWeeklyShares'), DEFAULT_STATE.sdWeeklyShares),
     sdYieldPerPlant: parseTriple(params, 'sd_yieldPerPlant', DEFAULT_STATE.sdYieldPerPlant, 0.01),
     sdCycleMonths: parseTriple(params, 'sd_cycleMonths', DEFAULT_STATE.sdCycleMonths, 0.1),
     dnYieldPerPlant: parseTriple(params, 'dn_yieldPerPlant', DEFAULT_STATE.dnYieldPerPlant, 0.01),
@@ -263,6 +301,16 @@ const parseStateFromUrl = (): CalculatorState => {
     ),
     dnWave1Share: parseTriple(params, 'dn_wave1Share', DEFAULT_STATE.dnWave1Share, 0, 1),
     dnWave2Share: parseTriple(params, 'dn_wave2Share', DEFAULT_STATE.dnWave2Share, 0, 1),
+    dnInflorescenceLoss: parseTriple(
+      params,
+      'dn_inflorescenceLoss',
+      DEFAULT_STATE.dnInflorescenceLoss,
+      0,
+      0.95,
+    ),
+    dnSeedlingMaterial: (['manual', 'frigo', 'tray'].includes(params.get('dnSeedlingMaterial') ?? '')
+      ? params.get('dnSeedlingMaterial')
+      : DEFAULT_STATE.dnSeedlingMaterial) as DnSeedlingMaterial,
     dnManualProfileEnabled: params.get('dnManualProfileEnabled') === '1',
     dnManualMonthlyPlantYield: parseMonthlyProfile(
       params.get('dnManualMonthlyPlantYield'),
@@ -572,7 +620,7 @@ function App() {
   const sdResult = useMemo(() => calculateCrop(state, 'SD'), [state])
   const dnResult = useMemo(() => calculateCrop(state, 'DN'), [state])
   const coreFactor = useMemo(() => getCoreFactor(state), [state])
-  const totalMarketFactor = coreFactor * state.packout
+  const totalMarketFactor = coreFactor * state.packout.avg
   const dnManualAnnualPlant = useMemo(
     () => state.dnManualMonthlyPlantYield.reduce((sum, value) => sum + value, 0),
     [state.dnManualMonthlyPlantYield],
@@ -590,6 +638,10 @@ function App() {
       })),
     [dnCalendar],
   )
+  const sdCycleProfileData = useMemo(
+    () => buildSdCycleWaveProfile(state, calendarScenario),
+    [state, calendarScenario],
+  )
   const dnCycleProfileData = useMemo(
     () => buildDnCycleWaveProfile(state, calendarScenario),
     [state, calendarScenario],
@@ -602,18 +654,18 @@ function App() {
 
   const farmMonthlyData = useMemo(() => {
     const area = state.farmAreaM2
-    const sdMonthlyShelf = sdResult.avg.marketShelfM2PerYear / 12
+    const sdCalendar = buildSdMonthlyCalendar(state, calendarScenario)
     return MONTH_LABELS.map((month, index) => {
       const row: Record<string, string | number> = { month }
       if (state.cropType === 'SD' || state.cropType === 'both') {
-        row.КСД = roundTo(sdMonthlyShelf * area, 1)
+        row.КСД = roundTo(sdCalendar[index] * area, 1)
       }
       if (state.cropType === 'DN' || state.cropType === 'both') {
         row.НСД = roundTo(dnCalendar[index] * area, 1)
       }
       return row
     })
-  }, [state.cropType, state.farmAreaM2, sdResult, dnCalendar])
+  }, [state.cropType, state.farmAreaM2, state, calendarScenario, dnCalendar])
 
   const peakFarmMonth = useMemo(() => {
     let bestMonth = MONTH_LABELS[0]
@@ -821,9 +873,17 @@ function App() {
   }
 
   const updateQualityField = (key: QualityField, value: number) => {
+    setState((prev) => ({
+      ...prev,
+      [key]: normalizeFactor(value, 0.3, 1),
+    }))
+  }
+
+  const updateSdWeeklyShare = (weekIndex: number, value: number) => {
     setState((prev) => {
-      if (key === 'packout') return { ...prev, packout: normalizeFactor(value, 0.5, 1) }
-      return { ...prev, [key]: normalizeFactor(value, 0.3, 1) }
+      const next = [...prev.sdWeeklyShares]
+      next[weekIndex] = clamp(value, 0, 1)
+      return { ...prev, sdWeeklyShares: next }
     })
   }
 
@@ -898,6 +958,18 @@ function App() {
     }
   }, [dnCycleProfileData, state.dnManualProfileEnabled, state.dnCycleMonths, state.dnEstablishMonths, calendarScenario])
 
+  const sdProfileAxis = useMemo(() => {
+    const maxKg = maxOf(sdCycleProfileData.map((point) => point.marketKgPerMonth))
+    const cycleMonths = state.sdCycleMonths[calendarScenario]
+    const xStep = cycleMonths <= 6 ? 0.5 : 1
+    return {
+      y: buildDenseAxis(maxKg, { minStep: 0.5, tickCount: 6 }),
+      xTicks: buildMonthAxisTicks(cycleMonths, xStep),
+      cycleMonths,
+      fruitingWeeks: state.sdFruitingWeeks,
+    }
+  }, [sdCycleProfileData, state.sdCycleMonths, state.sdFruitingWeeks, calendarScenario])
+
   const percentileChartData = [
     { p: 'Нижняя 10%', КСД: roundTo(uncertaintySD.p10, 1), НСД: roundTo(uncertaintyDN.p10, 1) },
     { p: 'Средняя 50%', КСД: roundTo(uncertaintySD.p50, 1), НСД: roundTo(uncertaintyDN.p50, 1) },
@@ -949,7 +1021,9 @@ function App() {
     rows.push('')
     rows.push(`Коэффициент потерь;${state.kLosses}`)
     rows.push(`Коэффициент рисков;${state.kPests}`)
-    rows.push(`Доля товарной ягоды;${state.packout}`)
+    rows.push(`Доля товарной ягоды мин;${state.packout.min}`)
+    rows.push(`Доля товарной ягоды сред;${state.packout.avg}`)
+    rows.push(`Доля товарной ягоды макс;${state.packout.max}`)
     rows.push(`Неопределенность,%;${state.uncertaintyPct}`)
 
     const csv = `\uFEFF${rows.join('\n')}`
@@ -1102,7 +1176,7 @@ function App() {
     }
 
     const targetMarketRatio = ratios.reduce((sum, value) => sum + value, 0) / ratios.length
-    const targetCore = clamp(targetMarketRatio / state.packout, 0.3, 1.2)
+    const targetCore = clamp(targetMarketRatio / state.packout.avg, 0.3, 1.2)
     const currentCore = getCoreFactor(state)
     const scale = Math.sqrt(targetCore / currentCore)
 
@@ -1155,10 +1229,15 @@ function App() {
           onFarmArea={(farmAreaM2) => updateCommonField('farmAreaM2', farmAreaM2)}
           kLosses={state.kLosses}
           kPests={state.kPests}
-          packout={state.packout}
+          packout={state.packout.avg}
           onKLosses={(value) => updateQualityField('kLosses', value)}
           onKPests={(value) => updateQualityField('kPests', value)}
-          onPackout={(value) => updateQualityField('packout', value)}
+          onPackout={(value) =>
+            setState((prev) => ({
+              ...prev,
+              packout: { min: value, avg: value, max: value },
+            }))
+          }
           onStep={setWizardStep}
           onClose={closeWizard}
         />
@@ -1549,20 +1628,25 @@ function App() {
                 />
               </label>
             </div>
-            <label className="field">
-              <HintLabel label="Доля товарной ягоды" hint={FIELD_HINTS.packout} />
-              <input
-                type="number"
-                min={0.5}
-                max={1}
-                step={0.01}
-                value={state.packout}
-                onChange={(event) => updateQualityField('packout', Number(event.target.value))}
-              />
-            </label>
+            <TripleInputs
+              title="Доля товарной ягоды"
+              unit="0…1"
+              hint={FIELD_HINTS.packout}
+              clientMode={clientMode}
+              values={state.packout}
+              min={0.4}
+              max={1}
+              step={0.01}
+              onChange={(scenario, value) => updateTripleField('packout', scenario, value)}
+            />
             <p className="hint">
-              Итог: коэффициент качества = {formatValue(coreFactor, 3)}, коэффициент товарного выхода ={' '}
-              {formatValue(totalMarketFactor, 3)}
+              Товарный урожай = биологический × доля товарной ягоды (какая часть идёт в продажу, не в отход).
+              По опроснику агронома: КСД ~0,67 / 0,92 / 0,86; НСД отличается — задайте Мин / Средний / Макс
+              отдельно.
+            </p>
+            <p className="hint">
+              Итог: коэффициент качества = {formatValue(coreFactor, 3)}, коэффициент товарного выхода (средний
+              сценарий) = {formatValue(totalMarketFactor, 3)}
             </p>
           </section>
 
@@ -1590,6 +1674,48 @@ function App() {
                 onChange={(scenario, value) => updateTripleField('sdCycleMonths', scenario, value)}
               />
               {hasSdWarning && <p className="warning">Рекомендуемый порядок: Минимум ≤ Средний ≤ Максимум.</p>}
+              {!clientMode && (
+                <details>
+                  <summary>Недельный профиль плодоношения КСД</summary>
+                  <label className="field">
+                    <HintLabel
+                      label="Недель плодоношения в конце цикла"
+                      hint="Сбор идёт в последние N недель цикла; типично 6 недель по опроснику агронома."
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={12}
+                      step={1}
+                      value={state.sdFruitingWeeks}
+                      onChange={(event) =>
+                        setState((prev) => ({
+                          ...prev,
+                          sdFruitingWeeks: clamp(Number(event.target.value), 1, 12),
+                        }))
+                      }
+                    />
+                  </label>
+                  <p className="hint">
+                    Доли урожая по неделям (нормализуются к 100%). Ориентир Пуронен: 10-10-20-35-20-5%.
+                  </p>
+                  <div className="manual-month-grid">
+                    {Array.from({ length: state.sdFruitingWeeks }, (_, index) => (
+                      <label key={`sd-week-${index}`} className="field manual-month-cell">
+                        <span>Нед {index + 1}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={state.sdWeeklyShares[index] ?? 0}
+                          onChange={(event) => updateSdWeeklyShare(index, Number(event.target.value))}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              )}
             </section>
           )}
 
@@ -1615,6 +1741,36 @@ function App() {
                 min={1}
                 step={0.1}
                 onChange={(scenario, value) => updateTripleField('dnCycleMonths', scenario, value)}
+              />
+              <label className="field">
+                <HintLabel
+                  label="Тип рассады НСД (1-я волна)"
+                  hint="Фриго даёт ~12,5% урожая цикла на 1-ю волну, хорошо разогнанный трей — ~27,5%. В режиме «Вручную» доли волн задаются ниже."
+                />
+                <select
+                  value={state.dnSeedlingMaterial}
+                  onChange={(event) =>
+                    setState((prev) => ({
+                      ...prev,
+                      dnSeedlingMaterial: event.target.value as DnSeedlingMaterial,
+                    }))
+                  }
+                >
+                  <option value="manual">Вручную (доли волн)</option>
+                  <option value="frigo">Фриго</option>
+                  <option value="tray">Трей (разогнанная рассада)</option>
+                </select>
+              </label>
+              <TripleInputs
+                title="Потери от повреждения 1-й цветоносы"
+                unit="доля"
+                hint="Снижает только 1-ю волну: 0,15 = минус 15% от её вклада. По опроснику: до 15% (мин) / 5% (сред) / 0% (макс)."
+                clientMode={clientMode}
+                values={state.dnInflorescenceLoss}
+                min={0}
+                max={0.95}
+                step={0.01}
+                onChange={(scenario, value) => updateTripleField('dnInflorescenceLoss', scenario, value)}
               />
               {!clientMode && (
               <TripleInputs
@@ -1816,8 +1972,11 @@ function App() {
             <h3>Сравнение КСД и НСД (товарный урожай, кг/м²·мес · кг/м²/год)</h3>
             <ChartExplainBlock id="compare" />
             <div className="chart-wrap chart-wrap-tall">
-              <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={chartData} margin={{ top: 28, right: state.cropType === 'both' ? 16 : 8, left: 8, bottom: 4 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartData}
+                  margin={state.cropType === 'both' ? CHART_MARGIN.dual : CHART_MARGIN.compact}
+                >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="scenario" />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
@@ -1849,7 +2008,7 @@ function App() {
                     />
                   )}
                   <Tooltip content={<YieldSqmTooltip />} />
-                  <Legend />
+                  <ChartLegend />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
                     <Bar yAxisId="sd" dataKey="КСД" fill={CHART.sd} name="КСД">
                       <LabelList content={<YieldBarTopLabel />} />
@@ -1863,7 +2022,7 @@ function App() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="hint">
+            <p className="hint chart-footnote">
               Над столбцами — товарный урожай в кг/м²·мес · кг/м²/год. При режиме «оба» у КСД и НСД отдельные
               шкалы: НСД читается по правой оси с более частыми делениями.
             </p>
@@ -1947,8 +2106,11 @@ function App() {
             )}
             <ChartExplainBlock id="farm-monthly" />
             <div className="chart-wrap chart-wrap-tall">
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={farmMonthlyData} margin={{ top: 12, right: state.cropType === 'both' ? 12 : 4, left: 4, bottom: 4 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={farmMonthlyData}
+                  margin={state.cropType === 'both' ? CHART_MARGIN.dual : CHART_MARGIN.compact}
+                >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
@@ -1975,7 +2137,7 @@ function App() {
                     />
                   )}
                   <Tooltip content={<KgTooltip />} />
-                  <Legend />
+                  <ChartLegend />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
                     <Bar yAxisId="sd" dataKey="КСД" fill={CHART.sd} name="КСД, кг с фермы" />
                   )}
@@ -1985,9 +2147,9 @@ function App() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="hint">
-              <strong>КСД:</strong> равномерный сбор — непрерывная ротация циклов (кусты меняются партиями, в
-              среднем каждый месяц одинаково).
+            <p className="hint chart-footnote">
+              <strong>КСД:</strong> ротация когорт с недельным профилем 10-10-20-35-20-5% в конце цикла (пики
+              смещены к завершению цикла).
               <br />
               <strong>НСД:</strong> волны плодоношения 6–9 мес, когорты кустов стартуют со сдвигом — урожай
               распределён по сезону, не в 1–2 месяца. Пик суммарного сбора:{' '}
@@ -1997,6 +2159,58 @@ function App() {
               при площади {formatValue(state.farmAreaM2, 1)} м².
             </p>
           </section>
+
+          {!clientMode && (state.cropType === 'SD' || state.cropType === 'both') && (
+          <section className="chart-card" id="pdf-sec-chart-sd-profile">
+            <h3>Профиль плодоношения внутри цикла КСД (товарный кг/м²·мес)</h3>
+            <div className="toggle compact">
+              {SCENARIOS.map((scenario) => (
+                <button
+                  key={scenario}
+                  type="button"
+                  className={calendarScenario === scenario ? 'active' : ''}
+                  onClick={() => setCalendarScenario(scenario)}
+                >
+                  {SCENARIO_LABELS[scenario]}
+                </button>
+              ))}
+            </div>
+            <ChartExplainBlock id="sd-profile" />
+            <div className="chart-wrap chart-wrap-tall">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={sdCycleProfileData} margin={CHART_MARGIN.line}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="month"
+                    type="number"
+                    domain={[0, sdProfileAxis.cycleMonths]}
+                    ticks={sdProfileAxis.xTicks}
+                    tickFormatter={(value) => Number(value).toFixed(1)}
+                    label={{ value: 'Месяц цикла', position: 'insideBottom', offset: -4 }}
+                  />
+                  <YAxis
+                    domain={sdProfileAxis.y.domain}
+                    ticks={sdProfileAxis.y.ticks}
+                    label={{ value: 'кг/м²·мес', angle: -90, position: 'insideLeft', offset: 8 }}
+                  />
+                  <Tooltip content={<SqmMonthTooltip />} />
+                  <Line
+                    type="monotone"
+                    dataKey="marketKgPerMonth"
+                    stroke={CHART.sd}
+                    strokeWidth={2}
+                    dot={false}
+                    name="кг/м²·мес"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="hint chart-footnote">
+              Плодоношение ~{sdProfileAxis.fruitingWeeks} нед в конце цикла {formatValue(sdProfileAxis.cycleMonths, 1)}{' '}
+              мес; доли по неделям — из параметров КСД (ориентир 10-10-20-35-20-5%).
+            </p>
+          </section>
+          )}
 
           {econOpen && (
             <BerryEconPanel
@@ -2014,8 +2228,11 @@ function App() {
             <h3>Диапазон неопределенности 10/50/90% (товарный кг/м²·мес · кг/м²/год)</h3>
             <ChartExplainBlock id="uncertainty" />
             <div className="chart-wrap chart-wrap-tall">
-              <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={percentileChartData} margin={{ top: 28, right: state.cropType === 'both' ? 16 : 8, left: 8, bottom: 4 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={percentileChartData}
+                  margin={state.cropType === 'both' ? CHART_MARGIN.dual : CHART_MARGIN.compact}
+                >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="p" />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
@@ -2042,7 +2259,7 @@ function App() {
                     />
                   )}
                   <Tooltip content={<YieldSqmTooltip />} />
-                  <Legend />
+                  <ChartLegend />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
                     <Bar yAxisId="sd" dataKey="КСД" fill={CHART.sdSoft} name="КСД">
                       <LabelList content={<YieldBarTopLabel />} />
@@ -2056,7 +2273,7 @@ function App() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="hint">
+            <p className="hint chart-footnote">
               Монте-Карло: случайные прогоны в пределах ваших Мин/Макс и неопределённости {state.uncertaintyPct}%.
               Нижняя 10% — осторожная оценка, 50% — медиана, 90% — оптимистичная. Карточки сценариев выше — отдельно,
               они задаются вручную.
@@ -2085,8 +2302,8 @@ function App() {
             </div>
             <ChartExplainBlock id="dn-calendar" />
             <div className="chart-wrap chart-wrap-tall">
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={dnCalendarData} margin={{ top: 24, right: 8, left: 8, bottom: 4 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dnCalendarData} margin={CHART_MARGIN.compact}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis
@@ -2101,7 +2318,7 @@ function App() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="hint">
+            <p className="hint chart-footnote">
               {state.dnManualProfileEnabled
                 ? 'Календарь из вашего ручного помесячного профиля.'
                 : 'Сезон НСД на 1 м²: волны + перекрывающиеся когорты кустов (как на помесячном графике фермы).'}
@@ -2118,8 +2335,8 @@ function App() {
             </h3>
             <ChartExplainBlock id="dn-profile" />
             <div className="chart-wrap chart-wrap-tall">
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={dnCycleProfileData} margin={{ top: 12, right: 12, left: 8, bottom: 20 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dnCycleProfileData} margin={CHART_MARGIN.line}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis
                     dataKey="month"
@@ -2150,7 +2367,7 @@ function App() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <p className="hint">
+            <p className="hint chart-footnote">
               {state.dnManualProfileEnabled
                 ? 'Линия строится из 12 заданных вами помесячных значений на растение.'
                 : `До ~${formatValue(dnProfileAxis.establish, 1)} мес — установление когорты без сбора; затем пики 1-й и 2-й волны и спад в конце цикла.`}

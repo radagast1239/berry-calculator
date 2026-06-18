@@ -44,7 +44,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
   {
     id: 'model-limits',
     label: 'Ограничения и риски модели',
-    description: 'Деловые формулировки ограничений: волны, рассада, packout, календарь.',
+    description: 'Деловые формулировки ограничений: волны, рассада, товарность, календарь.',
     group: 'general',
     selector: '#pdf-sec-model-limits',
   },
@@ -74,7 +74,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
   {
     id: 'chart-farm-monthly',
     label: 'Помесячный сбор с фермы',
-    description: 'Кг товарной ягоды по месяцам: КСД равномерно, НСД по волнам.',
+    description: 'Кг товарной ягоды по месяцам: КСД по недельному профилю, НСД по волнам.',
     group: 'charts',
     selector: '#pdf-sec-chart-farm-monthly',
   },
@@ -92,6 +92,15 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
     description: 'Статистический разброс (Монте-Карло) внутри ваших Мин–Макс.',
     group: 'charts',
     selector: '#pdf-sec-chart-uncertainty',
+    advanced: true,
+  },
+  {
+    id: 'chart-sd-profile',
+    label: 'Профиль цикла КСД',
+    description: 'Недельное плодоношение в конце цикла (10-10-20-35-20-5%).',
+    group: 'charts',
+    selector: '#pdf-sec-chart-sd-profile',
+    crop: 'SD',
     advanced: true,
   },
   {
@@ -248,8 +257,14 @@ function prepareCloneForPdf(root: HTMLElement) {
   })
   root.querySelectorAll('.chart-wrap').forEach((el) => {
     const node = el as HTMLElement
-    node.style.height = '260px'
-    node.style.minHeight = '260px'
+    node.style.height = '300px'
+    node.style.minHeight = '300px'
+    node.style.marginBottom = '8px'
+  })
+  root.querySelectorAll('.chart-footnote, .chart-card > .hint').forEach((el) => {
+    const node = el as HTMLElement
+    node.style.marginTop = '16px'
+    node.style.lineHeight = '1.55'
   })
   compactResultsTables(root)
 }
@@ -307,6 +322,36 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
+function splitChartCard(block: HTMLElement): HTMLElement[] | null {
+  const chartWrap = block.querySelector('.chart-wrap')
+  if (!chartWrap) return null
+
+  const units: HTMLElement[] = []
+  const header = document.createElement('div')
+  header.className = 'pdf-split-unit pdf-chart-header'
+  block.childNodes.forEach((node) => {
+    if (!(node instanceof HTMLElement)) return
+    if (node.classList.contains('chart-wrap')) return
+    if (node.classList.contains('hint') || node.classList.contains('chart-footnote')) return
+    header.appendChild(node.cloneNode(true))
+  })
+  if (header.childNodes.length > 0) units.push(header)
+
+  const chartUnit = document.createElement('div')
+  chartUnit.className = 'pdf-split-unit pdf-chart-only'
+  chartUnit.appendChild(chartWrap.cloneNode(true))
+  units.push(chartUnit)
+
+  block.querySelectorAll(':scope > .hint, :scope > .chart-footnote').forEach((el) => {
+    const wrap = document.createElement('div')
+    wrap.className = 'pdf-split-unit pdf-chart-footnote'
+    wrap.appendChild(el.cloneNode(true))
+    units.push(wrap)
+  })
+
+  return units.length > 0 ? units : null
+}
+
 function splitCaptureUnits(block: HTMLElement): HTMLElement[] {
   const scenarioCards = block.querySelectorAll('.scenario-card')
   if (scenarioCards.length > 0) {
@@ -333,6 +378,9 @@ function splitCaptureUnits(block: HTMLElement): HTMLElement[] {
     }
     return units
   }
+
+  const chartUnits = splitChartCard(block)
+  if (chartUnits) return chartUnits
 
   return [block]
 }
@@ -418,11 +466,7 @@ async function captureWrapped(html2canvas: Html2CanvasFn, wrapped: HTMLElement):
 }
 
 function unitIsAtomic(unit: HTMLElement): boolean {
-  return (
-    unit.classList.contains('pdf-split-card') ||
-    unit.querySelector('.chart-wrap') != null ||
-    unit.classList.contains('chart-card')
-  )
+  return unit.classList.contains('pdf-split-card') || unit.classList.contains('pdf-chart-only')
 }
 
 function appendCanvasToPdf(

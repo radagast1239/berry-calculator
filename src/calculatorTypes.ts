@@ -1,4 +1,5 @@
 import type { CropType, Triple } from './types'
+import type { DnSeedlingMaterial } from './cropProfileConstants'
 
 export interface CalculatorState {
   cropType: CropType
@@ -6,10 +7,13 @@ export interface CalculatorState {
   farmAreaM2: number
   kLosses: number
   kPests: number
-  packout: number
+  /** Доля товарной ягоды по сценариям Мин / Средний / Макс. */
+  packout: Triple
   uncertaintyPct: number
   sdYieldPerPlant: Triple
   sdCycleMonths: Triple
+  sdFruitingWeeks: number
+  sdWeeklyShares: number[]
   dnYieldPerPlant: Triple
   dnCycleMonths: Triple
   dnTurnaroundMonths: Triple
@@ -17,6 +21,9 @@ export interface CalculatorState {
   dnEstablishMonths: Triple
   dnWave1Share: Triple
   dnWave2Share: Triple
+  dnSeedlingMaterial: DnSeedlingMaterial
+  /** Доля потери 1-й волны из-за повреждения цветоносов (0…1). */
+  dnInflorescenceLoss: Triple
   dnManualProfileEnabled: boolean
   dnManualMonthlyPlantYield: number[]
   berryMassG: Triple

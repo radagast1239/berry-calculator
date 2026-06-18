@@ -10,6 +10,7 @@ import {
   type SortParams,
   type SortProfile,
   type SortsCollection,
+  type FarmSettings,
 } from './sortTypes'
 import { decodeSortsFromUrl } from './sortUrlCodec'
 
@@ -39,6 +40,12 @@ function normalizeSort(raw: unknown, index: number): SortProfile | null {
       ...p,
       sdYieldPerPlant: { ...DEFAULT_SORT_PARAMS.sdYieldPerPlant, ...p.sdYieldPerPlant },
       sdCycleMonths: { ...DEFAULT_SORT_PARAMS.sdCycleMonths, ...p.sdCycleMonths },
+      sdFruitingWeeks:
+        typeof p.sdFruitingWeeks === 'number' ? p.sdFruitingWeeks : DEFAULT_SORT_PARAMS.sdFruitingWeeks,
+      sdWeeklyShares:
+        Array.isArray(p.sdWeeklyShares) && p.sdWeeklyShares.length > 0
+          ? p.sdWeeklyShares.map((v) => Number(v) || 0)
+          : [...DEFAULT_SORT_PARAMS.sdWeeklyShares],
       dnYieldPerPlant: { ...DEFAULT_SORT_PARAMS.dnYieldPerPlant, ...p.dnYieldPerPlant },
       dnCycleMonths: { ...DEFAULT_SORT_PARAMS.dnCycleMonths, ...p.dnCycleMonths },
       dnTurnaroundMonths: { ...DEFAULT_SORT_PARAMS.dnTurnaroundMonths, ...p.dnTurnaroundMonths },
@@ -46,6 +53,11 @@ function normalizeSort(raw: unknown, index: number): SortProfile | null {
       dnEstablishMonths: { ...DEFAULT_SORT_PARAMS.dnEstablishMonths, ...p.dnEstablishMonths },
       dnWave1Share: { ...DEFAULT_SORT_PARAMS.dnWave1Share, ...p.dnWave1Share },
       dnWave2Share: { ...DEFAULT_SORT_PARAMS.dnWave2Share, ...p.dnWave2Share },
+      dnInflorescenceLoss: { ...DEFAULT_SORT_PARAMS.dnInflorescenceLoss, ...p.dnInflorescenceLoss },
+      dnSeedlingMaterial:
+        p.dnSeedlingMaterial === 'frigo' || p.dnSeedlingMaterial === 'tray' || p.dnSeedlingMaterial === 'manual'
+          ? p.dnSeedlingMaterial
+          : DEFAULT_SORT_PARAMS.dnSeedlingMaterial,
       berryMassG: { ...DEFAULT_SORT_PARAMS.berryMassG, ...p.berryMassG },
       dnManualProfileEnabled: Boolean(p.dnManualProfileEnabled),
       dnManualMonthlyPlantYield:
@@ -56,6 +68,22 @@ function normalizeSort(raw: unknown, index: number): SortProfile | null {
   }
 }
 
+function normalizeFarm(raw: Partial<FarmSettings> & { packout?: unknown }): FarmSettings {
+  const farm = { ...DEFAULT_FARM, ...raw }
+  const packout = raw.packout
+  if (typeof packout === 'number' && Number.isFinite(packout)) {
+    farm.packout = { min: packout, avg: packout, max: packout }
+  } else if (packout && typeof packout === 'object') {
+    const triple = packout as Partial<import('./types').Triple>
+    farm.packout = {
+      min: typeof triple.min === 'number' ? triple.min : DEFAULT_FARM.packout.min,
+      avg: typeof triple.avg === 'number' ? triple.avg : DEFAULT_FARM.packout.avg,
+      max: typeof triple.max === 'number' ? triple.max : DEFAULT_FARM.packout.max,
+    }
+  }
+  return farm
+}
+
 function normalizeCollection(raw: Partial<SortsCollection>): SortsCollection {
   const sorts = (raw.sorts ?? [])
     .map((s, i) => normalizeSort(s, i + 1))
@@ -63,7 +91,7 @@ function normalizeCollection(raw: Partial<SortsCollection>): SortsCollection {
     .slice(0, MAX_SORTS)
   if (!sorts.length) return defaultCollection()
   const activeSortId = sorts.some((s) => s.id === raw.activeSortId) ? String(raw.activeSortId) : sorts[0].id
-  const farm = { ...DEFAULT_FARM, ...(raw.farm ?? {}) }
+  const farm = normalizeFarm((raw.farm ?? {}) as Partial<FarmSettings> & { packout?: unknown })
   return { version: 1, activeSortId, farm, sorts }
 }
 

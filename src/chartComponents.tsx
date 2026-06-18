@@ -1,4 +1,23 @@
+import { Legend, type LegendProps } from 'recharts'
 import { fmtNum, fmtSqmMoYear, yearlyToMonthly } from './yieldFormat'
+
+/** Отступы Recharts: легенда сверху, подписи осей снизу — без наезда на текст под графиком. */
+export const CHART_MARGIN = {
+  compact: { top: 36, right: 12, left: 8, bottom: 28 },
+  dual: { top: 36, right: 16, left: 8, bottom: 28 },
+  line: { top: 16, right: 12, left: 12, bottom: 40 },
+} as const
+
+export const CHART_LEGEND_PROPS: LegendProps = {
+  verticalAlign: 'top',
+  align: 'right',
+  iconSize: 10,
+  wrapperStyle: { fontSize: 12, lineHeight: '16px', paddingBottom: 4 },
+}
+
+export function ChartLegend(props?: Partial<LegendProps>) {
+  return <Legend {...CHART_LEGEND_PROPS} {...props} />
+}
 
 interface ChartTooltipProps {
   active?: boolean

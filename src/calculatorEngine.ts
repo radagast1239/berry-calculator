@@ -1,7 +1,16 @@
 import type { CalculatorState, CropResult, ScenarioResult } from './calculatorTypes'
 import type { Scenario } from './types'
+import {
+  DEFAULT_SD_FRUITING_WEEKS,
+  DN_FIRST_WAVE_TOTAL_SHARE,
+  normalizeWeeklyShares,
+  WEEKS_PER_MONTH,
+} from './cropProfileConstants'
 
 const SCENARIOS: Scenario[] = ['min', 'avg', 'max']
+
+export const getPackout = (state: CalculatorState, scenario: Scenario): number =>
+  clamp(state.packout[scenario], 0.4, 1)
 
 export const clamp = (value: number, min: number, max?: number): number => {
   if (Number.isNaN(value)) return min
@@ -56,8 +65,9 @@ export const calculateCrop = (state: CalculatorState, crop: 'SD' | 'DN'): CropRe
     const grossShelfM2PerYear = raw.grossShelfM2PerYear
     const grossPlantPerYear = state.density > 0 ? grossShelfM2PerYear / state.density : 0
     const coreFactor = getCoreFactor(state)
+    const packout = getPackout(state, scenario)
     const bioShelfM2PerYear = grossShelfM2PerYear * coreFactor
-    const marketShelfM2PerYear = bioShelfM2PerYear * state.packout
+    const marketShelfM2PerYear = bioShelfM2PerYear * packout
     const marketM2PerYear = marketShelfM2PerYear
     const marketM2PerMonth = marketM2PerYear / 12
     const farmMarketAnnualKg = marketShelfM2PerYear * state.farmAreaM2
@@ -72,7 +82,7 @@ export const calculateCrop = (state: CalculatorState, crop: 'SD' | 'DN'): CropRe
         const avgYield = Math.max(state.dnYieldPerPlant.avg, 0.0001)
         const scenarioScale = yieldPerPlant / avgYield
         const monthly = state.dnManualMonthlyPlantYield.map(
-          (value) => value * scenarioScale * state.density * coreFactor * state.packout,
+          (value) => value * scenarioScale * state.density * coreFactor * packout,
         )
         const productive = monthly.filter((value) => value > 0.0001)
         productiveMonths = productive.length
@@ -86,7 +96,7 @@ export const calculateCrop = (state: CalculatorState, crop: 'SD' | 'DN'): CropRe
         if (productiveMonths <= 0) {
           productiveMonthError = 'Фаза установления должна быть короче цикла НСД.'
         } else {
-          const cycleMarketShelf = grossShelfM2PerCycle * coreFactor * state.packout
+          const cycleMarketShelf = grossShelfM2PerCycle * coreFactor * packout
           productiveMonthMarketKg = cycleMarketShelf / productiveMonths
         }
       }
@@ -176,7 +186,12 @@ export const simulatePercentiles = (
       clamp(value * (1 + (Math.random() * 2 - 1) * spread), 0.3, 1.2)
     const kLosses = fluctuate(state.kLosses, uncertainty)
     const kPests = fluctuate(state.kPests, uncertainty)
-    const packout = clamp(state.packout * (1 + (Math.random() * 2 - 1) * uncertainty * 0.7), 0.4, 1)
+    const packout = clamp(
+      sampleTriangular(state.packout.min, state.packout.avg, state.packout.max) *
+        (1 + (Math.random() * 2 - 1) * uncertainty * 0.7),
+      0.4,
+      1,
+    )
     const marketShelf = grossShelf * kLosses * kPests * packout
     values.push(marketShelf)
   }
@@ -201,6 +216,102 @@ const getDnWaveShares = (state: CalculatorState, scenario: Scenario): number[] =
   const w3 = Math.max(0, 1 - w1 - w2)
   const total = w1 + w2 + w3 || 1
   return [w1 / total, w2 / total, w3 / total]
+}
+
+/** Доли волн с учётом типа рассады (фриго/трей) и потери цветоносов на 1-й волне. */
+export const getEffectiveDnWaveShares = (state: CalculatorState, scenario: Scenario): number[] => {
+  const nominal = getDnWaveShares(state, scenario)
+  let firstWaveTotal: number
+  if (state.dnSeedlingMaterial === 'frigo') {
+    firstWaveTotal = DN_FIRST_WAVE_TOTAL_SHARE.frigo
+  } else if (state.dnSeedlingMaterial === 'tray') {
+    firstWaveTotal = DN_FIRST_WAVE_TOTAL_SHARE.tray
+  } else {
+    firstWaveTotal = nominal[0]
+  }
+
+  const inflorescence = 1 - clamp(state.dnInflorescenceLoss[scenario], 0, 0.95)
+  firstWaveTotal *= inflorescence
+  firstWaveTotal = clamp(firstWaveTotal, 0, 0.95)
+
+  const remaining = Math.max(0, 1 - firstWaveTotal)
+  const tail = nominal.slice(1)
+  const tailSum = tail.reduce((sum, value) => sum + value, 0) || 1
+  return [firstWaveTotal, ...tail.map((share) => (remaining * share) / tailSum)]
+}
+
+function getSdWeeklyShares(state: CalculatorState): number[] {
+  return normalizeWeeklyShares(state.sdWeeklyShares, state.sdFruitingWeeks || DEFAULT_SD_FRUITING_WEEKS)
+}
+
+/** Веса сбора внутри одного цикла КСД (0…cycleMonths), пик — последние sdFruitingWeeks недель. */
+function buildSdCycleShape(state: CalculatorState, cycleMonths: number): Array<{ t: number; weight: number }> {
+  const weeks = clamp(state.sdFruitingWeeks || DEFAULT_SD_FRUITING_WEEKS, 1, 12)
+  const fruitingMonths = weeks / WEEKS_PER_MONTH
+  const fruitingStart = Math.max(0, cycleMonths - fruitingMonths)
+  const shares = getSdWeeklyShares(state)
+  const step = Math.max(0.05, cycleMonths / 48)
+  const points: Array<{ t: number; weight: number }> = []
+
+  for (let t = 0; t <= cycleMonths + 0.0001; t += step) {
+    let weight = 0
+    if (t >= fruitingStart) {
+      const weekIndex = Math.min(
+        shares.length - 1,
+        Math.floor(((t - fruitingStart) / fruitingMonths) * shares.length),
+      )
+      weight = shares[weekIndex] ?? 0
+    }
+    points.push({ t, weight })
+  }
+  return points
+}
+
+/** Календарный год КСД: ротация когорт + недельный профиль 10-10-20-35-20-5%. */
+export function buildSdMonthlyCalendar(state: CalculatorState, scenario: Scenario): number[] {
+  const months = new Array(12).fill(0)
+  const cycleMonths = state.sdCycleMonths[scenario]
+  if (cycleMonths <= 0) return months
+
+  const shape = buildSdCycleShape(state, cycleMonths)
+  const shapeIntegral = shape.reduce((sum, point) => sum + point.weight, 0) * (cycleMonths / Math.max(shape.length, 1))
+  if (shapeIntegral <= 0) return months
+
+  const packout = getPackout(state, scenario)
+  const marketAnnual =
+    computeScenarioRaw(state, 'SD', scenario).grossShelfM2PerYear * getCoreFactor(state) * packout
+
+  for (let cohortStart = -cycleMonths; cohortStart <= 12; cohortStart += cycleMonths) {
+    shape.forEach((point) => {
+      const calendarMonth = cohortStart + point.t
+      if (calendarMonth < 0 || calendarMonth >= 12) return
+      const monthIndex = Math.floor(calendarMonth)
+      months[monthIndex] += point.weight
+    })
+  }
+
+  const sum = months.reduce((acc, value) => acc + value, 0)
+  if (sum <= 0) return months
+  return months.map((weight) => roundTo((marketAnnual * weight) / sum, 4))
+}
+
+export const buildSdCycleWaveProfile = (
+  state: CalculatorState,
+  scenario: Scenario,
+): Array<{ month: number; marketKgPerMonth: number }> => {
+  const cycleMonths = state.sdCycleMonths[scenario]
+  if (cycleMonths <= 0) return []
+
+  const shape = buildSdCycleShape(state, cycleMonths)
+  const integral = shape.reduce((sum, point) => sum + point.weight, 0) * (cycleMonths / Math.max(shape.length, 1))
+  const grossCycle = state.sdYieldPerPlant[scenario] * state.density
+  const marketCycle = grossCycle * getCoreFactor(state) * getPackout(state, scenario)
+  const scale = integral > 0 ? marketCycle / integral : 0
+
+  return shape.map((point) => ({
+    month: roundTo(point.t, 2),
+    marketKgPerMonth: roundTo(point.weight * scale, 2),
+  }))
 }
 
 /** Форма сезонности НСД: перекрывающиеся когорты + волны, размазанные по месяцам (не в одну точку). */
@@ -238,7 +349,7 @@ export const buildDnMonthlyCalendar = (state: CalculatorState, scenario: Scenari
   if (state.dnManualProfileEnabled) {
     const avgYield = Math.max(state.dnYieldPerPlant.avg, 0.0001)
     const scenarioScale = state.dnYieldPerPlant[scenario] / avgYield
-    const factor = getCoreFactor(state) * state.packout * state.density
+    const factor = getCoreFactor(state) * getPackout(state, scenario) * state.density
     return state.dnManualMonthlyPlantYield.map((value) => value * scenarioScale * factor)
   }
 
@@ -247,14 +358,14 @@ export const buildDnMonthlyCalendar = (state: CalculatorState, scenario: Scenari
   const fruitingMonths = cycleMonths - establish
   if (fruitingMonths <= 0) return months
 
-  const shares = getDnWaveShares(state, scenario)
+  const shares = getEffectiveDnWaveShares(state, scenario)
   const turnaround = state.dnTurnaroundMonths[scenario]
   const shape = buildDnCalendarShape(establish, fruitingMonths, shares, turnaround)
   const shapeSum = shape.reduce((sum, value) => sum + value, 0)
   if (shapeSum <= 0) return months
 
   const marketAnnualShelf =
-    computeScenarioRaw(state, 'DN', scenario).grossShelfM2PerYear * getCoreFactor(state) * state.packout
+    computeScenarioRaw(state, 'DN', scenario).grossShelfM2PerYear * getCoreFactor(state) * getPackout(state, scenario)
 
   return shape.map((weight) => roundTo((marketAnnualShelf * weight) / shapeSum, 4))
 }
@@ -266,7 +377,7 @@ export const buildDnCycleWaveProfile = (
   if (state.dnManualProfileEnabled) {
     const avgYield = Math.max(state.dnYieldPerPlant.avg, 0.0001)
     const scenarioScale = state.dnYieldPerPlant[scenario] / avgYield
-    const factor = getCoreFactor(state) * state.packout * state.density
+    const factor = getCoreFactor(state) * getPackout(state, scenario) * state.density
     return state.dnManualMonthlyPlantYield.map((value, index) => ({
       month: index + 1,
       marketKgPerMonth: roundTo(value * scenarioScale * factor, 2),
@@ -279,8 +390,8 @@ export const buildDnCycleWaveProfile = (
   if (productiveMonths <= 0) return []
 
   const grossCycle = state.dnYieldPerPlant[scenario] * state.density
-  const marketCycle = grossCycle * getCoreFactor(state) * state.packout
-  const shares = getDnWaveShares(state, scenario)
+  const marketCycle = grossCycle * getCoreFactor(state) * getPackout(state, scenario)
+  const shares = getEffectiveDnWaveShares(state, scenario)
   const centers = shares.length === 2 ? [0.28, 0.78] : [0.18, 0.5, 0.82]
   const widths = shares.length === 2 ? [0.16, 0.14] : [0.14, 0.12, 0.12]
   const step = Math.max(0.1, cycleMonths / 40)
