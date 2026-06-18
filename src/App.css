@@ -956,6 +956,27 @@ button.primary:hover {
   font-weight: normal;
 }
 
+.agronomist-preset-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--dg-brand-light);
+  border-radius: var(--dg-radius);
+  background: var(--dg-brand-softer);
+}
+
+.agronomist-preset-bar .ghost-btn {
+  align-self: flex-start;
+}
+
+.agronomist-guide {
+  border-top: 1px solid var(--dg-border-soft);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
 .guide-block {
   background: linear-gradient(180deg, var(--dg-brand-softer) 0%, var(--dg-surface) 100%);
   border: 1px solid var(--dg-border);

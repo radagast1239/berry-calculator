@@ -15,6 +15,7 @@ import {
 } from 'recharts'
 import './App.css'
 import { CHART } from './chartColors'
+import { AGRONOMIST_PURONEN_PRESET, AGRONOMIST_PURONEN_SORT_NOTE } from './agronomistPresets'
 import { fmtFarmMoYear, fmtSqmMoYear, yearlyToMonthly, YIELD_COL } from './yieldFormat'
 import type { CropType, Scenario, Triple } from './types'
 import type { CalculatorState, CropResult } from './calculatorTypes'
@@ -753,6 +754,15 @@ function App() {
     [activeSortId, state, showToast, activeSort?.notes],
   )
 
+  const applyAgronomistPreset = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      ...AGRONOMIST_PURONEN_PRESET,
+      cropType: 'both',
+    }))
+    showToast('Загружен опрос агронома. Укажите плотность и площадь фермы под ваш проект.')
+  }, [setState, showToast])
+
   const handleNotesChange = useCallback(
     (notes: string) => {
       const next = updateSortNotes(sortsCollectionRef.current, activeSortId, notes)
@@ -1211,6 +1221,15 @@ function App() {
           />
 
           {!clientMode && (
+            <div className="agronomist-preset-bar">
+              <button type="button" className="ghost-btn" onClick={applyAgronomistPreset}>
+                Загрузить опрос агронома
+              </button>
+              <p className="hint">КСД/НСД по С. Пуронен (июнь 2026) — волны, циклы, выход с куста</p>
+            </div>
+          )}
+
+          {!clientMode && (
           <section className="crop-block guide-block">
             <h3>Инструкция Daogreen</h3>
             <p className="hint guide-intro">
@@ -1363,6 +1382,37 @@ function App() {
                 Формат CSV: <code>тип;сценарий;факт_кг_м2_поверхности_год</code> (пример:{' '}
                 <code>НСД;средний;38.5</code>). Калибровка подстраивает коэффициенты под ваши фактические урожаи.
               </p>
+            </details>
+            <details className="agronomist-guide">
+              <summary>Опросник агронома (Пуронен, 06.2026)</summary>
+              <p className="hint">
+                Кнопка «Загрузить опрос агронома» подставляет значения ниже. В полях «Выход с куста» —{' '}
+                <strong>валовый</strong> урожай (г → кг, делите на 1000). Товарный = валовый × доля товарной ягоды.
+              </p>
+              <ul className="guide-list">
+                <li>
+                  <strong>КСД, выход с куста (кг/цикл):</strong> Мин 0,3 · Средний 0,6 · Макс 1,1 (300–1200 г валовый).
+                  Товарный по опроснику: 0,2 / 0,55 / 0,95 — настраивается долей товарной (~0,85–0,92).
+                </li>
+                <li>
+                  <strong>КСД, длина цикла (мес):</strong> 2 / 2,5 / 3 — ~6 нед плодоношения + оборот. Распределение по
+                  неделям (10-10-20-35-20-5%) в модели КСД пока не задаётся — только для НСД есть волны.
+                </li>
+                <li>
+                  <strong>НСД, выход с куста (кг/цикл):</strong> Мин 0,5 · Средний 0,75 · Макс 1,35 — «условный год»
+                  (8–9 мес плодоношения) ≈ один цикл при длине 6–9 мес.
+                </li>
+                <li>
+                  <strong>НСД, цикл / установление / оборот (мес):</strong> цикл 6–7–9; установление 4–5–6; оборот между
+                  циклами 4–5–6 (зимовка или смена, не пауза между волнами).
+                </li>
+                <li>
+                  <strong>НСД, волны:</strong> планируйте 2 (макс 3 для редких сортов). Доли волн ~20-50-30% при 3
+                  волнах; при 2 волнах — ~35/65. Рассадный материал (фриго vs трей) сильно влияет на 1-ю волну — уточняйте
+                  вручную.
+                </li>
+              </ul>
+              <p className="hint">{AGRONOMIST_PURONEN_SORT_NOTE}</p>
             </details>
             <p className="hint guide-footer">Daogreen · daogreen.ru · модель даёт ориентиры, не заменяет пилотный прогон.</p>
           </section>
