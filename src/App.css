@@ -482,8 +482,10 @@
 
 body.pdf-exporting .app,
 body.pdf-exporting .sticky-summary,
-body.pdf-exporting .toast {
-  visibility: hidden !important;
+body.pdf-exporting .toast,
+body.pdf-exporting .wizard-backdrop,
+body.pdf-exporting .modal-backdrop {
+  display: none !important;
 }
 
 body.pdf-exporting .pdf-staging {
