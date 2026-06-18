@@ -4,6 +4,7 @@ import {
   defaultPdfSelection,
   getAvailablePdfSections,
   PDF_GROUP_LABELS,
+  PDF_PRESET_HINTS,
   PDF_PRESETS,
   type PdfSectionGroup,
 } from './pdfExport'
@@ -27,6 +28,7 @@ export function PdfExportDialog({
 }: PdfExportDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [selected, setSelected] = useState<Set<string>>(() => new Set(defaultPdfSelection(cropType, clientMode)))
+  const [presetHint, setPresetHint] = useState<string>(PDF_PRESET_HINTS.brief)
 
   const sections = useMemo(
     () => (open ? getAvailablePdfSections(cropType, clientMode) : []),
@@ -63,9 +65,10 @@ export function PdfExportDialog({
     })
   }
 
-  const applyPreset = (ids: string[]) => {
+  const applyPreset = (key: keyof typeof PDF_PRESETS) => {
     const available = new Set(sections.map((s) => s.id))
-    setSelected(new Set(ids.filter((id) => available.has(id))))
+    setSelected(new Set(PDF_PRESETS[key].filter((id) => available.has(id))))
+    setPresetHint(PDF_PRESET_HINTS[key])
   }
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -89,19 +92,22 @@ export function PdfExportDialog({
     >
       <form method="dialog" className="pdf-export-form" onSubmit={handleSubmit}>
         <h2 className="pdf-export-title">Выгрузка в PDF</h2>
-        <p className="pdf-export-lead">Отметьте разделы для файла. Печать не используется — файл скачается сразу.</p>
+        <p className="pdf-export-lead">
+          Выберите разделы отчёта. К каждому графику на сайте добавлено пояснение «что показывает / как считается» — оно
+          попадёт в PDF вместе с блоком.
+        </p>
 
         <div className="pdf-export-toolbar">
-          <button type="button" onClick={() => applyPreset(PDF_PRESETS.brief)}>
+          <button type="button" onClick={() => applyPreset('brief')}>
             Краткий
           </button>
-          <button type="button" onClick={() => applyPreset(PDF_PRESETS.client)}>
+          <button type="button" onClick={() => applyPreset('client')}>
             Для клиента
           </button>
-          <button type="button" onClick={() => applyPreset(PDF_PRESETS.investor)}>
+          <button type="button" onClick={() => applyPreset('investor')}>
             Для инвестора
           </button>
-          <button type="button" onClick={() => applyPreset(PDF_PRESETS.full)}>
+          <button type="button" onClick={() => applyPreset('full')}>
             Полный
           </button>
           <button type="button" onClick={() => setSelected(new Set(sections.map((s) => s.id)))}>
@@ -111,6 +117,7 @@ export function PdfExportDialog({
             Снять
           </button>
         </div>
+        {presetHint && <p className="hint pdf-preset-hint">{presetHint}</p>}
 
         <div className="pdf-export-checklist">
           {Array.from(grouped.entries()).map(([group, items]) => (
@@ -123,7 +130,10 @@ export function PdfExportDialog({
                     checked={selected.has(sec.id)}
                     onChange={() => toggle(sec.id)}
                   />
-                  {sec.label}
+                  <span className="pdf-export-item-text">
+                    <span className="pdf-export-item-label">{sec.label}</span>
+                    <span className="pdf-export-item-desc">{sec.description}</span>
+                  </span>
                 </label>
               ))}
             </fieldset>

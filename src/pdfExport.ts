@@ -18,6 +18,7 @@ export type PdfSectionGroup = 'general' | 'results' | 'charts'
 export interface PdfSectionDef {
   id: string
   label: string
+  description: string
   group: PdfSectionGroup
   selector?: string
   kind?: 'cover'
@@ -26,18 +27,62 @@ export interface PdfSectionDef {
 }
 
 export const PDF_SECTIONS: PdfSectionDef[] = [
-  { id: 'cover', label: 'Титульная страница', group: 'general', kind: 'cover' },
-  { id: 'results-sd', label: 'Результаты КСД', group: 'results', selector: '#pdf-sec-results-sd', crop: 'SD' },
-  { id: 'results-dn', label: 'Результаты НСД', group: 'results', selector: '#pdf-sec-results-dn', crop: 'DN' },
+  {
+    id: 'cover',
+    label: 'Титульная страница',
+    description: 'Название, дата, ключевые параметры и итоговый урожай КСД/НСД.',
+    group: 'general',
+    kind: 'cover',
+  },
+  {
+    id: 'methods',
+    label: 'Как читать расчёт',
+    description: 'Формулы модели и пример на ваших цифрах (средний сценарий).',
+    group: 'general',
+    selector: '#pdf-sec-methods',
+  },
+  {
+    id: 'results-sd',
+    label: 'Результаты КСД',
+    description: 'Карточки Мин/Средний/Макс и таблица по сценариям для КСД.',
+    group: 'results',
+    selector: '#pdf-sec-results-sd',
+    crop: 'SD',
+  },
+  {
+    id: 'results-dn',
+    label: 'Результаты НСД',
+    description: 'То же для НСД: циклы, товарный урожай, продуктивный месяц.',
+    group: 'results',
+    selector: '#pdf-sec-results-dn',
+    crop: 'DN',
+  },
   {
     id: 'chart-compare',
     label: 'Сравнение КСД и НСД',
+    description: 'Столбцы товарного урожая по сценариям и отраслевые ориентиры.',
     group: 'charts',
     selector: '#pdf-sec-chart-compare',
   },
   {
+    id: 'chart-farm-monthly',
+    label: 'Помесячный сбор с фермы',
+    description: 'Кг товарной ягоды по месяцам: КСД равномерно, НСД по волнам.',
+    group: 'charts',
+    selector: '#pdf-sec-chart-farm-monthly',
+  },
+  {
+    id: 'chart-sensitivity',
+    label: 'Чувствительность',
+    description: 'Как меняется урожай при ±% к плотности и выходу с куста.',
+    group: 'charts',
+    selector: '#pdf-sec-chart-sensitivity',
+    advanced: true,
+  },
+  {
     id: 'chart-uncertainty',
-    label: 'Диапазон неопределённости 10/50/90%',
+    label: 'Диапазон 10/50/90%',
+    description: 'Статистический разброс (Монте-Карло) внутри ваших Мин–Макс.',
     group: 'charts',
     selector: '#pdf-sec-chart-uncertainty',
     advanced: true,
@@ -45,6 +90,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
   {
     id: 'chart-dn-calendar',
     label: 'Календарь НСД по волнам',
+    description: 'Распределение урожая НСД по месяцам календарного года.',
     group: 'charts',
     selector: '#pdf-sec-chart-dn-calendar',
     crop: 'DN',
@@ -53,41 +99,39 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
   {
     id: 'chart-dn-profile',
     label: 'Профиль волны НСД',
+    description: 'Форма сбора внутри цикла: пики волн или ручной профиль.',
     group: 'charts',
     selector: '#pdf-sec-chart-dn-profile',
     crop: 'DN',
     advanced: true,
   },
-  { id: 'sources', label: 'Источники и доверие', group: 'general', selector: '#pdf-sec-sources' },
-  {
-    id: 'chart-sensitivity',
-    label: 'Чувствительность к плотности и урожаю',
-    group: 'charts',
-    selector: '#pdf-sec-chart-sensitivity',
-  },
-  {
-    id: 'chart-farm-monthly',
-    label: 'Помесячный сбор с фермы',
-    group: 'charts',
-    selector: '#pdf-sec-chart-farm-monthly',
-  },
   {
     id: 'sorts-compare',
     label: 'Сравнение сортов',
+    description: 'Таблица урожайности по всем сохранённым сортам.',
     group: 'results',
     selector: '#pdf-sec-sorts-compare',
   },
   {
     id: 'sorts-econ',
     label: 'Экономика по сортам',
+    description: 'Выручка, EBITDA и прибыль по сортам.',
     group: 'results',
     selector: '#pdf-sec-sorts-econ',
   },
   {
     id: 'econ',
     label: 'Экономика ягоды',
+    description: 'CAPEX, OPEX, прибыль, окупаемость при заполненных ценах.',
     group: 'results',
     selector: '#pdf-sec-econ',
+  },
+  {
+    id: 'sources',
+    label: 'Источники и доверие',
+    description: 'Откуда ориентиры и ограничения модели.',
+    group: 'general',
+    selector: '#pdf-sec-sources',
   },
 ]
 
@@ -98,10 +142,11 @@ export const PDF_GROUP_LABELS: Record<PdfSectionGroup, string> = {
 }
 
 export const PDF_PRESETS = {
-  client: ['cover', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly', 'sources'],
-  brief: ['cover', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
+  client: ['cover', 'methods', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly', 'sources'],
+  brief: ['cover', 'methods', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
   investor: [
     'cover',
+    'methods',
     'sorts-compare',
     'sorts-econ',
     'results-sd',
@@ -112,6 +157,24 @@ export const PDF_PRESETS = {
     'sources',
   ],
   full: PDF_SECTIONS.map((s) => s.id),
+}
+
+export const PDF_PRESET_HINTS: Record<keyof typeof PDF_PRESETS, string> = {
+  brief: 'Титул, формулы, результаты и два главных графика.',
+  client: 'Как «Краткий» + источники — без сложной аналитики.',
+  investor: 'Сорта, экономика, чувствительность — для обсуждения проекта.',
+  full: 'Все разделы, включая волны НСД и неопределённость.',
+}
+
+/** Пауза перед захватом DOM в PDF (дать графикам отрисоваться). */
+export function waitForPdfPaint(ms = 120): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.setTimeout(resolve, ms)
+      })
+    })
+  })
 }
 
 export interface PdfExportMeta {
@@ -348,7 +411,7 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
   const pageRef = { started: false }
   let hasContent = false
 
-  await waitForPaint(200)
+  await waitForPdfPaint(200)
 
   for (const id of ordered) {
     const sec = secMap.get(id)

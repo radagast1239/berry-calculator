@@ -203,6 +203,33 @@ const getDnWaveShares = (state: CalculatorState, scenario: Scenario): number[] =
   return [w1 / total, w2 / total, w3 / total]
 }
 
+/** Форма сезонности НСД: перекрывающиеся когорты + волны, размазанные по месяцам (не в одну точку). */
+function buildDnCalendarShape(
+  establishMonths: number,
+  fruitingMonths: number,
+  shares: number[],
+): number[] {
+  const months = new Array(12).fill(0)
+  if (fruitingMonths <= 0 || !shares.length) return months
+
+  const waveCenters = shares.length === 2 ? [0.28, 0.72] : [0.2, 0.52, 0.82]
+  const waveWidthMonths = Math.max(fruitingMonths / (shares.length * 2), 1.25)
+  // Ступенчатый посев/замена кустов — новая когорта каждые N мес, урожай идёт волнами весь год.
+  const cohortStagger = Math.max(fruitingMonths / (shares.length + 1), 1.5)
+
+  for (let cohortStart = -12; cohortStart <= 14; cohortStart += cohortStagger) {
+    shares.forEach((share, waveIndex) => {
+      const peakCalendarMonth = cohortStart + establishMonths + fruitingMonths * waveCenters[waveIndex]
+      for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+        const dist = (monthIndex + 0.5 - peakCalendarMonth) / waveWidthMonths
+        months[monthIndex] += share * Math.exp(-0.5 * dist * dist)
+      }
+    })
+  }
+
+  return months
+}
+
 export const buildDnMonthlyCalendar = (state: CalculatorState, scenario: Scenario): number[] => {
   const months = new Array(12).fill(0)
   if (state.dnManualProfileEnabled) {
@@ -213,30 +240,19 @@ export const buildDnMonthlyCalendar = (state: CalculatorState, scenario: Scenari
   }
 
   const cycleMonths = state.dnCycleMonths[scenario]
-  const turnaround = state.dnTurnaroundMonths[scenario]
-  const cycleSpan = cycleMonths + turnaround
-  const productiveMonths = cycleMonths - state.dnEstablishMonths[scenario]
-  if (productiveMonths <= 0) return months
-
-  const grossCycle = state.dnYieldPerPlant[scenario] * state.density
-  const marketCycle = grossCycle * getCoreFactor(state) * state.packout
+  const establish = state.dnEstablishMonths[scenario]
+  const fruitingMonths = cycleMonths - establish
+  if (fruitingMonths <= 0) return months
 
   const shares = getDnWaveShares(state, scenario)
-  const centers = shares.length === 2 ? [0.3, 0.78] : [0.2, 0.55, 0.85]
+  const shape = buildDnCalendarShape(establish, fruitingMonths, shares)
+  const shapeSum = shape.reduce((sum, value) => sum + value, 0)
+  if (shapeSum <= 0) return months
 
-  for (let cycleStart = -cycleSpan; cycleStart < 12 + cycleSpan; cycleStart += cycleSpan) {
-    for (let waveIndex = 0; waveIndex < shares.length; waveIndex += 1) {
-      const waveYield = marketCycle * shares[waveIndex]
-      const monthPosition =
-        cycleStart + state.dnEstablishMonths[scenario] + productiveMonths * centers[waveIndex]
-      if (monthPosition >= 0 && monthPosition < 12) {
-        const monthIndex = Math.floor(monthPosition)
-        months[monthIndex] += waveYield
-      }
-    }
-  }
+  const marketAnnualShelf =
+    computeScenarioRaw(state, 'DN', scenario).grossShelfM2PerYear * getCoreFactor(state) * state.packout
 
-  return months
+  return shape.map((weight) => roundTo((marketAnnualShelf * weight) / shapeSum, 4))
 }
 
 export const buildDnCycleWaveProfile = (

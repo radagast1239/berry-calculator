@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { calcBerryEconomics, calcBerryEconomicsAllScenarios, totalCapexRub, DEFAULT_BERRY_ECON } from '../berryEcon'
-import { calculateCrop, sumFarmKgForScenario } from '../calculatorEngine'
+import { calculateCrop, sumFarmKgForScenario, buildDnMonthlyCalendar } from '../calculatorEngine'
+import { AGRONOMIST_PURONEN_PRESET } from '../agronomistPresets'
 import { mergeToCalculatorState, DEFAULT_FARM, DEFAULT_SORT_PARAMS } from '../sortTypes'
 import { encodeSortsToUrl, decodeSortsFromUrl } from '../sortUrlCodec'
 import { computeSortInsights } from '../sortInsights'
@@ -80,6 +81,23 @@ describe('sortInsights', () => {
     ]
     const insights = computeSortInsights(rows, 'SD')
     expect(insights.bestSd?.id).toBe('b')
+  })
+})
+
+describe('buildDnMonthlyCalendar', () => {
+  it('spreads NSD across many months with staggered cohorts', () => {
+    const state = mergeToCalculatorState(
+      { ...DEFAULT_FARM, cropType: 'DN', density: 20, farmAreaM2: 200 },
+      {
+        ...DEFAULT_SORT_PARAMS,
+        ...AGRONOMIST_PURONEN_PRESET,
+      },
+    )
+    const cal = buildDnMonthlyCalendar(state, 'avg')
+    const activeMonths = cal.filter((value) => value > 0.01).length
+    expect(activeMonths).toBeGreaterThanOrEqual(6)
+    const annual = calculateCrop(state, 'DN').avg.marketShelfM2PerYear
+    expect(cal.reduce((sum, value) => sum + value, 0)).toBeCloseTo(annual, 1)
   })
 })
 

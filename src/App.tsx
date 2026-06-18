@@ -15,6 +15,8 @@ import {
 } from 'recharts'
 import './App.css'
 import { CHART } from './chartColors'
+import { CalculationSummary } from './CalculationSummary'
+import { ChartExplainBlock } from './ChartExplainBlock'
 import { AGRONOMIST_PURONEN_DENSITY, AGRONOMIST_PURONEN_PRESET, AGRONOMIST_PURONEN_SORT_NOTE } from './agronomistPresets'
 import { fmtFarmMoYear, fmtSqmMoYear, yearlyToMonthly, YIELD_COL } from './yieldFormat'
 import type { CropType, Scenario, Triple } from './types'
@@ -36,7 +38,7 @@ import {
   simulatePercentiles,
 } from './calculatorEngine'
 import { PdfExportDialog } from './PdfExportDialog'
-import { exportSectionsToPdf } from './pdfExport'
+import { exportSectionsToPdf, waitForPdfPaint } from './pdfExport'
 import { MobileSortsStrip } from './MobileSortsStrip'
 import { buildSortEconRows, SortEconComparePanel } from './SortEconComparePanel'
 import { SortComparePanel } from './SortComparePanel'
@@ -934,10 +936,18 @@ function App() {
 
   const runPdfExport = async (sectionIds: string[]) => {
     setPdfExporting(true)
+    const needCompare = sectionIds.some((id) => id === 'sorts-compare' || id === 'sorts-econ')
+    const needEcon = sectionIds.includes('econ')
+    const prevCompare = compareSortsOpen
+    const prevEcon = econOpen
+    if (needCompare) setCompareSortsOpen(true)
+    if (needEcon) setEconOpen(true)
+    if (needCompare || needEcon) await waitForPdfPaint(450)
+
     try {
       const date = new Date().toLocaleDateString('ru-RU')
       await exportSectionsToPdf(sectionIds, {
-        title: 'Калькулятор урожая клубники · Daogreen',
+        title: 'Калькулятор урожайности клубники · Daogreen',
         subtitle: 'Daogreen — проектирование и запуск вертикальных ферм',
         date,
         lines: [
@@ -946,6 +956,7 @@ function App() {
             label: 'База расчёта',
             value: 'полезная посевная площадь',
           },
+          { label: 'Сорт', value: activeSort?.name ?? '—' },
           { label: 'Плотность', value: `${state.density} раст/м²` },
           { label: 'Площадь фермы', value: `${state.farmAreaM2} м²` },
           {
@@ -964,6 +975,8 @@ function App() {
       const message = error instanceof Error ? error.message : 'Не удалось сформировать PDF.'
       showToast(message)
     } finally {
+      setCompareSortsOpen(prevCompare)
+      setEconOpen(prevEcon)
       setPdfExporting(false)
     }
   }
@@ -1735,6 +1748,8 @@ function App() {
             Расчёт для сорта: <strong>{activeSort?.name ?? '—'}</strong>
           </p>
 
+          <CalculationSummary state={state} sdResult={sdResult} dnResult={dnResult} />
+
           {(state.cropType === 'SD' || state.cropType === 'both') && (
             <div id="pdf-sec-results-sd">
               <ResultsTable crop="SD" title="Результаты КСД" result={sdResult} clientMode={clientMode} />
@@ -1748,12 +1763,13 @@ function App() {
 
           <section className="chart-card" id="pdf-sec-chart-compare">
             <h3>Сравнение КСД и НСД (товарный урожай, кг/м²·мес · кг/м²/год)</h3>
+            <ChartExplainBlock id="compare" />
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height={290}>
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="scenario" />
-                  <YAxis />
+                  <YAxis label={{ value: 'кг/м²/год', angle: -90, position: 'insideLeft' }} />
                   <Tooltip />
                   <Legend />
                   <ReferenceLine y={40} stroke={CHART.grid} strokeDasharray="4 4" label="Artechno 40" />
@@ -1779,6 +1795,7 @@ function App() {
                 onChange={(event) => setSensitivityPct(Number(event.target.value))}
               />
             </label>
+            <ChartExplainBlock id="sensitivity" />
             <div className="table-wrap">
               <table className="sensitivity-table">
                 <thead>
@@ -1841,6 +1858,7 @@ function App() {
                 ))}
               </div>
             )}
+            <ChartExplainBlock id="farm-monthly" />
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={farmMonthlyData}>
@@ -1862,7 +1880,11 @@ function App() {
               </ResponsiveContainer>
             </div>
             <p className="hint">
-              КСД: равномерный сбор по месяцам. НСД: по календарю волн. Пик суммарного сбора:{' '}
+              <strong>КСД:</strong> равномерный сбор — непрерывная ротация циклов (кусты меняются партиями, в
+              среднем каждый месяц одинаково).
+              <br />
+              <strong>НСД:</strong> волны плодоношения 6–9 мес, когорты кустов стартуют со сдвигом — урожай
+              распределён по сезону, не в 1–2 месяца. Пик суммарного сбора:{' '}
               <strong>
                 {peakFarmMonth.month} — {formatValue(peakFarmMonth.kg, 0)} кг
               </strong>{' '}
@@ -1884,6 +1906,7 @@ function App() {
           {!clientMode && (
           <section className="chart-card" id="pdf-sec-chart-uncertainty">
             <h3>Диапазон неопределенности 10/50/90% (товарный кг/м²·мес · кг/м²/год)</h3>
+            <ChartExplainBlock id="uncertainty" />
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={percentileChartData}>
@@ -1924,6 +1947,7 @@ function App() {
                 </button>
               ))}
             </div>
+            <ChartExplainBlock id="dn-calendar" />
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={dnCalendarData}>
@@ -1937,8 +1961,8 @@ function App() {
             </div>
             <p className="hint">
               {state.dnManualProfileEnabled
-                ? 'Это календарь из твоего ручного помесячного профиля.'
-                : 'Это распределение урожая по месяцам года с учётом фаз цикла и волн.'}
+                ? 'Календарь из вашего ручного помесячного профиля.'
+                : 'Сезон НСД на 1 м²: волны + перекрывающиеся когорты кустов (как на помесячном графике фермы).'}
             </p>
           </section>
           )}
@@ -1950,6 +1974,7 @@ function App() {
                 ? 'Ручной профиль НСД по месяцам (товарный кг/м² поверхности в месяц)'
                 : 'Экспонента волны внутри цикла НСД (рост → пик → спад)'}
             </h3>
+            <ChartExplainBlock id="dn-profile" />
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={dnCycleProfileData}>
