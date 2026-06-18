@@ -480,6 +480,19 @@
   overflow: hidden !important;
 }
 
+body.pdf-exporting [data-pdf-capture] {
+  width: 794px;
+  max-width: none;
+}
+
+body.pdf-exporting [data-pdf-capture] .chart-card,
+body.pdf-exporting [data-pdf-capture] .result-card,
+body.pdf-exporting [data-pdf-capture] .methods-card,
+body.pdf-exporting [data-pdf-capture] .model-limits-card {
+  box-shadow: none;
+  border: 1px solid #e5e7eb;
+}
+
 body.pdf-exporting .app,
 body.pdf-exporting .sticky-summary,
 body.pdf-exporting .toast,
