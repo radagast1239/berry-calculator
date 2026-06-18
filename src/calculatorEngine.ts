@@ -314,32 +314,37 @@ export const buildSdCycleWaveProfile = (
   }))
 }
 
-/** Пауза между стартами когорт = цикл + оборот (как в формуле циклов/год). */
+/** Шаг между посадками когорт. Малый оборот → цикл+оборот (волны видны); иначе — оборот из параметров. */
 function getDnCohortStagger(cycleMonths: number, turnaroundMonths: number): number {
+  if (turnaroundMonths >= 1) return turnaroundMonths
   return Math.max(cycleMonths + turnaroundMonths, 1)
 }
 
-/** Календарь года: профиль одного цикла НСД, сдвинутый по когортам. */
-function buildDnCalendarFromProfiles(
-  profile: Array<{ month: number; marketKgPerMonth: number }>,
+/** Волны НСД на календаре года: гауссовы пики + перекрывающиеся когорты. */
+function buildDnCalendarShape(
   establishMonths: number,
   cycleMonths: number,
+  shares: number[],
   turnaroundMonths: number,
 ): number[] {
   const months = new Array(12).fill(0)
-  if (!profile.length || cycleMonths <= 0) return months
+  if (cycleMonths <= 0 || !shares.length) return months
 
+  const centers = shares.length === 2 ? [0.28, 0.72] : [0.18, 0.5, 0.82]
+  const widthFracs = shares.length === 2 ? [0.18, 0.16] : [0.16, 0.14, 0.14]
   const stagger = getDnCohortStagger(cycleMonths, turnaroundMonths)
   const cohortStartMin = -establishMonths - cycleMonths
   const cohortStartMax = 12 + cycleMonths
 
   for (let cohortStart = cohortStartMin; cohortStart <= cohortStartMax; cohortStart += stagger) {
-    for (const point of profile) {
-      const calendarPos = cohortStart + establishMonths + point.month
-      if (calendarPos < 0 || calendarPos >= 12) continue
-      const monthIndex = Math.min(11, Math.max(0, Math.floor(calendarPos)))
-      months[monthIndex] += point.marketKgPerMonth
-    }
+    shares.forEach((share, waveIndex) => {
+      const peakMonth = cohortStart + establishMonths + cycleMonths * centers[waveIndex]
+      const widthMonths = Math.max(cycleMonths * (widthFracs[waveIndex] ?? 0.14), 0.55)
+      for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+        const dist = (monthIndex + 0.5 - peakMonth) / widthMonths
+        months[monthIndex] += share * Math.exp(-0.5 * dist * dist)
+      }
+    })
   }
 
   return months
@@ -359,8 +364,8 @@ export const buildDnMonthlyCalendar = (state: CalculatorState, scenario: Scenari
   if (cycleMonths <= 0) return months
 
   const turnaround = state.dnTurnaroundMonths[scenario]
-  const profile = buildDnCycleWaveProfile(state, scenario)
-  const shape = buildDnCalendarFromProfiles(profile, establish, cycleMonths, turnaround)
+  const shares = getEffectiveDnWaveShares(state, scenario)
+  const shape = buildDnCalendarShape(establish, cycleMonths, shares, turnaround)
   const shapeSum = shape.reduce((sum, value) => sum + value, 0)
   if (shapeSum <= 0) return months
 

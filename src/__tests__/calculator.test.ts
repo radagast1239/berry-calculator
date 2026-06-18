@@ -142,6 +142,19 @@ describe('buildDnMonthlyCalendar', () => {
     const min = Math.min(...cal.filter((value) => value > 0))
     const max = Math.max(...cal)
     expect(max / min).toBeGreaterThan(1.35)
+    expect(cal.every((value) => value > 0.01)).toBe(true)
+  })
+
+  it('keeps harvest in every month for agronomist preset', () => {
+    const state = mergeToCalculatorState(
+      { ...DEFAULT_FARM, cropType: 'DN', density: 20, farmAreaM2: 200 },
+      { ...DEFAULT_SORT_PARAMS, ...AGRONOMIST_PURONEN_PRESET },
+    )
+    const cal = buildDnMonthlyCalendar(state, 'max')
+    expect(cal.every((value) => value > 0.01)).toBe(true)
+    const min = Math.min(...cal)
+    const max = Math.max(...cal)
+    expect(max / min).toBeGreaterThan(1.15)
   })
 })
 
