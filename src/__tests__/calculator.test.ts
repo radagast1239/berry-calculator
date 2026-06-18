@@ -133,6 +133,16 @@ describe('buildDnMonthlyCalendar', () => {
     const max = Math.max(...cal)
     expect(max / min).toBeGreaterThan(1.3)
   })
+
+  it('shows wave peaks with default turnaround under 1 month', () => {
+    const state = mergeToCalculatorState({ ...DEFAULT_FARM, cropType: 'DN' }, DEFAULT_SORT_PARAMS)
+    const cal = buildDnMonthlyCalendar(state, 'avg')
+    const annual = calculateCrop(state, 'DN').avg.marketShelfM2PerYear
+    expect(cal.reduce((sum, value) => sum + value, 0)).toBeCloseTo(annual, 1)
+    const min = Math.min(...cal.filter((value) => value > 0))
+    const max = Math.max(...cal)
+    expect(max / min).toBeGreaterThan(1.35)
+  })
 })
 
 describe('buildSdMonthlyCalendar', () => {

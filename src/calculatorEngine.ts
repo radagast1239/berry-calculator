@@ -314,6 +314,13 @@ export const buildSdCycleWaveProfile = (
   }))
 }
 
+/** Пауза между стартами когорт на календаре года. */
+function getDnCohortStagger(fruitingMonths: number, turnaroundMonths: number): number {
+  if (turnaroundMonths >= 1) return turnaroundMonths
+  // Оборот < 1 мес — «конвейер»: шаг = цикл + оборот, не фиксированные 2 мес (они давали почти ровный год).
+  return Math.max(fruitingMonths + turnaroundMonths, 1)
+}
+
 /** Форма сезонности НСД: перекрывающиеся когорты + волны, размазанные по месяцам (не в одну точку). */
 function buildDnCalendarShape(
   establishMonths: number,
@@ -325,15 +332,15 @@ function buildDnCalendarShape(
   if (fruitingMonths <= 0 || !shares.length) return months
 
   const waveCenters = shares.length === 2 ? [0.28, 0.72] : [0.2, 0.52, 0.82]
-  const waveWidthMonths = Math.max(fruitingMonths / (shares.length * 2.5), 0.75)
-  // Новая когорта — по паузе между сменами (оборот), иначе слишком частый посев сглаживает волны.
-  const cohortStagger = Math.max(turnaroundMonths, 2)
+  const waveWidthFracs = shares.length === 2 ? [0.18, 0.16] : [0.16, 0.14, 0.14]
+  const cohortStagger = getDnCohortStagger(fruitingMonths, turnaroundMonths)
   const cohortStartMin = -establishMonths - fruitingMonths
   const cohortStartMax = 12 + fruitingMonths
 
   for (let cohortStart = cohortStartMin; cohortStart <= cohortStartMax; cohortStart += cohortStagger) {
     shares.forEach((share, waveIndex) => {
       const peakCalendarMonth = cohortStart + establishMonths + fruitingMonths * waveCenters[waveIndex]
+      const waveWidthMonths = Math.max(fruitingMonths * (waveWidthFracs[waveIndex] ?? 0.14), 0.45)
       for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
         const dist = (monthIndex + 0.5 - peakCalendarMonth) / waveWidthMonths
         months[monthIndex] += share * Math.exp(-0.5 * dist * dist)
