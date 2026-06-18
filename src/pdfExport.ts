@@ -1,4 +1,5 @@
 import type { CropType } from './types'
+import { parseProfileChartSpec, renderProfileLineChartCanvas } from './pdfProfileChart'
 
 type Html2CanvasFn = typeof import('html2canvas')['default']
 type JsPdfCtor = typeof import('jspdf')['jsPDF']
@@ -13,7 +14,7 @@ const PDF_W_PX = 794
 const PDF_SCALE = 2
 const PDF_MARGIN_MM = 12
 /** Меняйте при правках вёрстки PDF — видно в подвале файла. */
-export const PDF_LAYOUT_VERSION = 7
+export const PDF_LAYOUT_VERSION = 8
 
 export type PdfSectionGroup = 'general' | 'results' | 'charts'
 
@@ -243,6 +244,8 @@ function measureChartWrap(wrap: HTMLElement): { width: number; height: number } 
 async function svgToCanvas(svg: SVGElement, width: number, height: number): Promise<HTMLCanvasElement | null> {
   const clone = svg.cloneNode(true) as SVGElement
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  clone.querySelectorAll('[clip-path]').forEach((el) => el.removeAttribute('clip-path'))
+  clone.querySelectorAll('clipPath').forEach((el) => el.remove())
   const viewBox = svg.getAttribute('viewBox')
   if (viewBox) clone.setAttribute('viewBox', viewBox)
   clone.setAttribute('width', String(Math.round(width)))
@@ -286,11 +289,16 @@ async function rasterizeChartWrapsFromLive(source: HTMLElement, clone: HTMLEleme
     const dstWrap = dstWraps[index]
     if (!(srcWrap instanceof HTMLElement) || !(dstWrap instanceof HTMLElement)) continue
 
-    const svg = srcWrap.querySelector('svg.recharts-surface')
-    if (!(svg instanceof SVGSVGElement)) continue
-
     const { width, height } = measureChartWrap(srcWrap)
-    const canvas = await svgToCanvas(svg, width, height)
+
+    const profileSpec = parseProfileChartSpec(srcWrap, width, height)
+    const canvas = profileSpec
+      ? renderProfileLineChartCanvas(profileSpec)
+      : await (async () => {
+          const svg = srcWrap.querySelector('svg.recharts-surface')
+          if (!(svg instanceof SVGSVGElement)) return null
+          return svgToCanvas(svg, width, height)
+        })()
     if (!canvas) continue
 
     const img = document.createElement('img')
@@ -567,7 +575,9 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
       if (!(liveSection instanceof HTMLElement)) continue
 
       liveSection.scrollIntoView({ block: 'center' })
-      await waitForPaint(sec.group === 'charts' ? 550 : 280)
+      const isProfileChart =
+        sec.id === 'chart-sd-profile' || sec.id === 'chart-dn-profile'
+      await waitForPaint(isProfileChart ? 750 : sec.group === 'charts' ? 550 : 280)
 
       const block = await cloneSectionForPdf(liveSection)
       const canvas = await captureStagingBlock(html2canvas, block)

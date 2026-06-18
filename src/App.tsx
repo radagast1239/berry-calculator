@@ -2192,7 +2192,19 @@ function App() {
               ))}
             </div>
             <ChartExplainBlock id="sd-profile" />
-            <div className="chart-wrap chart-wrap-tall">
+            <div
+              className="chart-wrap chart-wrap-tall"
+              data-pdf-spec={JSON.stringify({
+                points: sdCycleProfileData,
+                color: CHART.sd,
+                xMax: sdProfileAxis.cycleMonths,
+                xTicks: sdProfileAxis.xTicks,
+                yDomain: sdProfileAxis.y.domain,
+                yTicks: sdProfileAxis.y.ticks,
+                xLabel: 'Месяц цикла',
+                yLabel: 'кг/м²·мес',
+              })}
+            >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={sdCycleProfileData} margin={pickChartMargin('line', chartIsMobile)}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -2354,7 +2366,19 @@ function App() {
                 : 'Экспонента волны внутри цикла НСД (рост → пик → спад)'}
             </h3>
             <ChartExplainBlock id="dn-profile" />
-            <div className="chart-wrap chart-wrap-tall">
+            <div
+              className="chart-wrap chart-wrap-tall"
+              data-pdf-spec={JSON.stringify({
+                points: dnCycleProfileData,
+                color: CHART.berry,
+                xMax: dnProfileAxis.cycleMonths,
+                xTicks: dnProfileAxis.xTicks,
+                yDomain: dnProfileAxis.y.domain,
+                yTicks: dnProfileAxis.y.ticks,
+                xLabel: state.dnManualProfileEnabled ? 'Месяц года' : 'Месяц цикла',
+                yLabel: 'кг/м²·мес',
+              })}
+            >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={dnCycleProfileData} margin={pickChartMargin('line', chartIsMobile)}>
                   <CartesianGrid strokeDasharray="3 3" />
