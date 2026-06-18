@@ -231,17 +231,49 @@ function waitForPaint(ms = 120): Promise<void> {
 
 function copySvgFromSource(source: HTMLElement, clone: HTMLElement) {
   const srcSvgs = source.querySelectorAll('svg.recharts-surface')
-  const dstSvgs = clone.querySelectorAll('svg.recharts-surface')
-  dstSvgs.forEach((dst, index) => {
-    const src = srcSvgs[index]
-    if (!src) return
-    const svg = dst as SVGElement
+  const dstSvgs = Array.from(clone.querySelectorAll('svg.recharts-surface'))
+  srcSvgs.forEach((src, index) => {
+    const dst = dstSvgs[index]
+    if (!dst) return
     const width = src.getBoundingClientRect().width || src.clientWidth || 700
     const height = src.getBoundingClientRect().height || src.clientHeight || 280
-    svg.setAttribute('width', String(Math.round(width)))
-    svg.setAttribute('height', String(Math.round(height)))
-    svg.style.width = `${Math.round(width)}px`
-    svg.style.height = `${Math.round(height)}px`
+    const fresh = src.cloneNode(true) as SVGElement
+    fresh.setAttribute('width', String(Math.round(width)))
+    fresh.setAttribute('height', String(Math.round(height)))
+    fresh.style.width = `${Math.round(width)}px`
+    fresh.style.height = `${Math.round(height)}px`
+    fresh.style.display = 'block'
+    fresh.style.overflow = 'visible'
+    dst.replaceWith(fresh)
+  })
+}
+
+/** После разбиения на части — подтянуть живой SVG с экрана (подписи месяцев, оси). */
+function refreshChartSvgsFromLive(liveRoot: HTMLElement, unit: HTMLElement) {
+  if (!unit.querySelector('.chart-wrap')) return
+  copySvgFromSource(liveRoot, unit)
+  prepareChartUnitForPdf(unit)
+}
+
+function prepareChartUnitForPdf(root: HTMLElement) {
+  root.querySelectorAll('.recharts-legend-wrapper').forEach((el) => el.remove())
+  root.querySelectorAll('.chart-wrap').forEach((el) => {
+    const node = el as HTMLElement
+    node.style.height = '280px'
+    node.style.minHeight = '280px'
+    node.style.marginBottom = '4px'
+    node.style.overflow = 'visible'
+  })
+  root.querySelectorAll('.chart-legend-row').forEach((el) => {
+    const node = el as HTMLElement
+    node.style.display = 'flex'
+    node.style.flexWrap = 'wrap'
+    node.style.gap = '8px 18px'
+    node.style.margin = '8px 0 12px'
+    node.style.padding = '0 4px'
+    node.style.fontSize = '12px'
+    node.style.lineHeight = '1.4'
+    node.style.color = '#374151'
   })
 }
 
@@ -270,6 +302,7 @@ function prepareCloneForPdf(root: HTMLElement) {
     node.style.marginTop = '6px'
     node.style.marginBottom = '10px'
   })
+  prepareChartUnitForPdf(root)
   root.querySelectorAll('.chart-footnote').forEach((el) => {
     const node = el as HTMLElement
     node.style.marginTop = '18px'
@@ -501,15 +534,21 @@ async function captureWrapped(html2canvas: Html2CanvasFn, wrapped: HTMLElement):
   const staging = document.createElement('div')
   staging.className = 'pdf-staging'
   applyStagingLayout(staging)
+  wrapped.classList.add('pdf-capture-root')
   staging.appendChild(wrapped)
   document.body.appendChild(staging)
-  const paintMs = wrapped.querySelector('.chart-wrap') ? 280 : 150
+  const paintMs = wrapped.querySelector('.chart-wrap') ? 320 : 150
   await waitForPaint(paintMs)
   try {
-    const canvas = await captureBlock(html2canvas, wrapped)
+    const width = Math.max(staging.scrollWidth, PDF_W_PX)
+    const height = Math.max(wrapped.scrollHeight, wrapped.offsetHeight, 40)
+    wrapped.style.width = `${width}px`
+    wrapped.style.minHeight = `${height}px`
+    const canvas = await captureBlock(html2canvas, staging)
     if (!canvas || canvas.width < 2 || canvas.height < 2) return null
     return canvas
   } finally {
+    wrapped.classList.remove('pdf-capture-root')
     staging.remove()
   }
 }
@@ -622,11 +661,16 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
     }
 
     const units = splitCaptureUnits(block)
+    const liveSection = sec.selector ? document.querySelector(sec.selector) : null
     for (let i = 0; i < units.length; i += 1) {
-      const wrapped = wrapPdfUnit(units[i], i === 0 ? sec.label : null)
+      const unit = units[i]
+      if (liveSection instanceof HTMLElement) {
+        refreshChartSvgsFromLive(liveSection, unit)
+      }
+      const wrapped = wrapPdfUnit(unit, i === 0 ? sec.label : null)
       const canvas = await captureWrapped(html2canvas, wrapped)
       if (!canvas) continue
-      appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, { atomic: unitIsAtomic(units[i]) })
+      appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, { atomic: unitIsAtomic(unit) })
       hasContent = true
     }
   }
