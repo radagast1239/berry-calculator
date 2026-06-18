@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { calcBerryEconomics, calcBerryEconomicsAllScenarios, totalCapexRub, DEFAULT_BERRY_ECON } from '../berryEcon'
-import { calculateCrop, sumFarmKgForScenario, buildDnMonthlyCalendar, buildSdMonthlyCalendar, getPackout, getEffectiveDnWaveShares } from '../calculatorEngine'
+import { calculateCrop, sumFarmKgForScenario, buildDnMonthlyCalendar, buildSdMonthlyCalendar, getPackout, getEffectiveDnWaveShares, buildDnCycleWaveProfile } from '../calculatorEngine'
 import { AGRONOMIST_PURONEN_PRESET } from '../agronomistPresets'
 import { mergeToCalculatorState, DEFAULT_FARM, DEFAULT_SORT_PARAMS } from '../sortTypes'
 import { encodeSortsToUrl, decodeSortsFromUrl } from '../sortUrlCodec'
@@ -81,6 +81,37 @@ describe('sortInsights', () => {
     ]
     const insights = computeSortInsights(rows, 'SD')
     expect(insights.bestSd?.id).toBe('b')
+  })
+})
+
+describe('buildDnCycleWaveProfile', () => {
+  it('spreads harvest across the fruiting cycle (waves inside 6–9 mo, not only after establishment)', () => {
+    const state = mergeToCalculatorState(
+      { ...DEFAULT_FARM, cropType: 'DN', density: 20 },
+      { ...DEFAULT_SORT_PARAMS, ...AGRONOMIST_PURONEN_PRESET },
+    )
+    const profile = buildDnCycleWaveProfile(state, 'avg')
+    const earlyHarvest = profile.filter((point) => point.month < 2).reduce((sum, point) => sum + point.marketKgPerMonth, 0)
+    expect(earlyHarvest).toBeGreaterThan(0)
+
+    const maxKg = Math.max(...profile.map((point) => point.marketKgPerMonth))
+    const peakByMonth = new Map<number, number>()
+    profile.forEach((point) => {
+      const month = Math.floor(point.month)
+      peakByMonth.set(month, Math.max(peakByMonth.get(month) ?? 0, point.marketKgPerMonth))
+    })
+    const activeMonths = [...peakByMonth.values()].filter((value) => value > maxKg * 0.08).length
+    expect(activeMonths).toBeGreaterThanOrEqual(5)
+
+    const step = Math.max(0.1, state.dnCycleMonths.avg / 40)
+    const total = profile.reduce((sum, point) => sum + point.marketKgPerMonth * step, 0)
+    const cycleMarket =
+      state.dnYieldPerPlant.avg *
+      state.density *
+      state.kLosses *
+      state.kPests *
+      getPackout(state, 'avg')
+    expect(total).toBeCloseTo(cycleMarket, 0)
   })
 })
 

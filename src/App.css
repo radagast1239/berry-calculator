@@ -476,7 +476,7 @@
 .pdf-staging .chart-wrap {
   height: 300px !important;
   min-height: 300px !important;
-  margin-bottom: 8px !important;
+  margin-bottom: 10px !important;
   overflow: hidden !important;
 }
 
@@ -497,7 +497,7 @@ body.pdf-exporting .pdf-staging {
   display: flex !important;
   flex-wrap: wrap;
   gap: 8px 18px;
-  margin: 8px 0 12px !important;
+  margin: 10px 0 12px !important;
   font-size: 12px !important;
   color: #374151 !important;
   line-height: 1.4 !important;
@@ -512,9 +512,17 @@ body.pdf-exporting .pdf-staging {
 
 .pdf-staging .chart-footnote,
 .pdf-staging .pdf-chart-footnote {
-  margin-top: 20px !important;
-  padding-top: 8px !important;
+  margin-top: 12px !important;
+  padding-top: 6px !important;
   line-height: 1.55 !important;
+}
+
+.pdf-staging .pdf-chart-footnote .chart-footnote,
+.pdf-staging .pdf-chart-footnote .hint {
+  margin: 0 !important;
+  padding: 0 4px 4px !important;
+  font-size: 13px !important;
+  color: #6b7280 !important;
 }
 
 .pdf-staging .pdf-methods-disclaimer {
@@ -1346,8 +1354,8 @@ button.primary:hover {
 }
 
 .chart-card .chart-footnote {
-  margin-top: 16px;
-  padding-top: 4px;
+  margin-top: 18px;
+  padding-top: 6px;
   clear: both;
 }
 
@@ -1356,7 +1364,7 @@ button.primary:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 18px;
-  margin: 6px 0 2px;
+  margin: 12px 0 10px;
   padding: 0 2px;
   font-size: 12px;
   color: #374151;
@@ -1549,6 +1557,7 @@ thead {
   width: 100%;
   height: 300px;
   min-height: 300px;
+  margin-bottom: 8px;
 }
 
 .sources-card {
@@ -1703,15 +1712,15 @@ thead {
   }
 
   .chart-legend-row {
-    margin-top: 12px;
-    margin-bottom: 8px;
+    margin-top: 16px;
+    margin-bottom: 12px;
     gap: 6px 12px;
     font-size: 11px;
   }
 
   .chart-card .chart-footnote {
-    margin-top: 20px;
-    padding-top: 8px;
+    margin-top: 24px;
+    padding-top: 10px;
   }
 
   .chart-card::after {

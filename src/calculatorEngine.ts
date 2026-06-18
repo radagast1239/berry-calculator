@@ -92,9 +92,9 @@ export const calculateCrop = (state: CalculatorState, crop: 'SD' | 'DN'): CropRe
           productiveMonthMarketKg = productive.reduce((sum, value) => sum + value, 0) / productiveMonths
         }
       } else {
-        productiveMonths = cycleMonths - state.dnEstablishMonths[scenario]
+        productiveMonths = cycleMonths
         if (productiveMonths <= 0) {
-          productiveMonthError = 'Фаза установления должна быть короче цикла НСД.'
+          productiveMonthError = 'Длина цикла НСД должна быть больше нуля.'
         } else {
           const cycleMarketShelf = grossShelfM2PerCycle * coreFactor * packout
           productiveMonthMarketKg = cycleMarketShelf / productiveMonths
@@ -355,7 +355,8 @@ export const buildDnMonthlyCalendar = (state: CalculatorState, scenario: Scenari
 
   const cycleMonths = state.dnCycleMonths[scenario]
   const establish = state.dnEstablishMonths[scenario]
-  const fruitingMonths = cycleMonths - establish
+  /** Цикл = период плодоношения на полке; установление — сдвиг до старта сбора (питомник), не «дыра» внутри цикла. */
+  const fruitingMonths = cycleMonths
   if (fruitingMonths <= 0) return months
 
   const shares = getEffectiveDnWaveShares(state, scenario)
@@ -385,28 +386,24 @@ export const buildDnCycleWaveProfile = (
   }
 
   const cycleMonths = state.dnCycleMonths[scenario]
-  const establish = state.dnEstablishMonths[scenario]
-  const productiveMonths = cycleMonths - establish
-  if (productiveMonths <= 0) return []
+  if (cycleMonths <= 0) return []
 
   const grossCycle = state.dnYieldPerPlant[scenario] * state.density
   const marketCycle = grossCycle * getCoreFactor(state) * getPackout(state, scenario)
   const shares = getEffectiveDnWaveShares(state, scenario)
-  const centers = shares.length === 2 ? [0.28, 0.78] : [0.18, 0.5, 0.82]
-  const widths = shares.length === 2 ? [0.16, 0.14] : [0.14, 0.12, 0.12]
+  const centers = shares.length === 2 ? [0.28, 0.72] : [0.18, 0.5, 0.82]
+  const widths = shares.length === 2 ? [0.18, 0.16] : [0.16, 0.14, 0.14]
   const step = Math.max(0.1, cycleMonths / 40)
 
   const profileWeights: Array<{ month: number; weight: number }> = []
   let integral = 0
 
   for (let t = 0; t <= cycleMonths + 0.0001; t += step) {
+    const progress = clamp(t / cycleMonths, 0, 1)
     let weight = 0
-    if (t >= establish) {
-      const progress = clamp((t - establish) / productiveMonths, 0, 1)
-      for (let i = 0; i < shares.length; i += 1) {
-        const distance = (progress - centers[i]) / widths[i]
-        weight += shares[i] * Math.exp(-0.5 * distance * distance)
-      }
+    for (let i = 0; i < shares.length; i += 1) {
+      const distance = (progress - centers[i]) / widths[i]
+      weight += shares[i] * Math.exp(-0.5 * distance * distance)
     }
     profileWeights.push({ month: t, weight })
     integral += weight * step
