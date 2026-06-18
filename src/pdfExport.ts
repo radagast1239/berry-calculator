@@ -42,6 +42,13 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
     selector: '#pdf-sec-methods',
   },
   {
+    id: 'model-limits',
+    label: 'Ограничения и риски модели',
+    description: 'Деловые формулировки ограничений: волны, рассада, packout, календарь.',
+    group: 'general',
+    selector: '#pdf-sec-model-limits',
+  },
+  {
     id: 'results-sd',
     label: 'Результаты КСД',
     description: 'Карточки Мин/Средний/Макс и таблица по сценариям для КСД.',
@@ -67,7 +74,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
   {
     id: 'chart-farm-monthly',
     label: 'Помесячный сбор с фермы',
-    description: 'Кг товарной ягоды по месяцам для сценариев Мин, Средний и Макс (в PDF — все три).',
+    description: 'Кг товарной ягоды по месяцам: КСД равномерно, НСД по волнам.',
     group: 'charts',
     selector: '#pdf-sec-chart-farm-monthly',
   },
@@ -90,7 +97,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
   {
     id: 'chart-dn-calendar',
     label: 'Календарь НСД по волнам',
-    description: 'Распределение урожая НСД по месяцам — в PDF для Мин, Средний и Макс.',
+    description: 'Распределение урожая НСД по месяцам календарного года.',
     group: 'charts',
     selector: '#pdf-sec-chart-dn-calendar',
     crop: 'DN',
@@ -99,7 +106,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
   {
     id: 'chart-dn-profile',
     label: 'Профиль волны НСД',
-    description: 'Форма сбора внутри цикла — в PDF для всех сценариев.',
+    description: 'Форма сбора внутри цикла: пики волн или ручной профиль.',
     group: 'charts',
     selector: '#pdf-sec-chart-dn-profile',
     crop: 'DN',
@@ -135,11 +142,12 @@ export const PDF_GROUP_LABELS: Record<PdfSectionGroup, string> = {
 }
 
 export const PDF_PRESETS = {
-  client: ['cover', 'methods', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
-  brief: ['cover', 'methods', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
+  client: ['cover', 'methods', 'model-limits', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
+  brief: ['cover', 'methods', 'model-limits', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
   investor: [
     'cover',
     'methods',
+    'model-limits',
     'sorts-compare',
     'sorts-econ',
     'results-sd',
@@ -152,8 +160,8 @@ export const PDF_PRESETS = {
 }
 
 export const PDF_PRESET_HINTS: Record<keyof typeof PDF_PRESETS, string> = {
-  brief: 'Титул, формулы, результаты (Мин/Средний/Макс) и графики по всем сценариям.',
-  client: 'Как «Краткий» — в PDF все три сценария на графиках.',
+  brief: 'Титул, формулы, результаты и два главных графика.',
+  client: 'Как «Краткий» — без сложной аналитики.',
   investor: 'Сорта, экономика, чувствительность — для обсуждения проекта.',
   full: 'Все разделы, включая волны НСД и неопределённость.',
 }
@@ -240,13 +248,33 @@ function prepareCloneForPdf(root: HTMLElement) {
   })
   root.querySelectorAll('.chart-wrap').forEach((el) => {
     const node = el as HTMLElement
-    node.style.height = `${node.offsetHeight || 280}px`
-    node.style.minHeight = `${node.offsetHeight || 280}px`
+    node.style.height = '260px'
+    node.style.minHeight = '260px'
   })
-  root.querySelectorAll('.scenario-cards').forEach((el) => {
-    const node = el as HTMLElement
-    node.style.gridTemplateColumns = '1fr'
-    node.style.gap = '8px'
+  compactResultsTables(root)
+}
+
+const PDF_TABLE_HEADERS = [
+  'Сцен.',
+  'Цикл/год',
+  'Валовый кг/м²',
+  'Био кг/м²',
+  'Товар кг/м²',
+  'Ферма, кг',
+]
+
+function compactResultsTables(root: HTMLElement) {
+  root.querySelectorAll('.table-wrap table').forEach((table) => {
+    table.classList.add('pdf-results-table')
+    table.querySelectorAll('thead th').forEach((th, index) => {
+      if (PDF_TABLE_HEADERS[index]) th.textContent = PDF_TABLE_HEADERS[index]
+    })
+    table.querySelectorAll('tbody td').forEach((td) => {
+      const text = td.textContent?.trim()
+      if (text?.includes('·')) {
+        td.innerHTML = text.replace(/\s*·\s*/g, '<br/>')
+      }
+    })
   })
 }
 
@@ -277,6 +305,46 @@ function escapeHtml(value: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+function splitCaptureUnits(block: HTMLElement): HTMLElement[] {
+  const scenarioCards = block.querySelectorAll('.scenario-card')
+  if (scenarioCards.length > 0) {
+    const units: HTMLElement[] = []
+    const title = block.querySelector('h3')
+    if (title) {
+      const wrap = document.createElement('div')
+      wrap.className = 'pdf-split-unit'
+      wrap.appendChild(title.cloneNode(true))
+      units.push(wrap)
+    }
+    scenarioCards.forEach((card) => {
+      const wrap = document.createElement('div')
+      wrap.className = 'pdf-split-unit pdf-split-card'
+      wrap.appendChild(card.cloneNode(true))
+      units.push(wrap)
+    })
+    const table = block.querySelector('.table-wrap')
+    if (table instanceof HTMLElement && !table.classList.contains('no-print-table')) {
+      const wrap = document.createElement('div')
+      wrap.className = 'pdf-split-unit'
+      wrap.appendChild(table.cloneNode(true))
+      units.push(wrap)
+    }
+    return units
+  }
+
+  return [block]
+}
+
+function wrapPdfUnit(unit: HTMLElement, title: string | null): HTMLElement {
+  if (!title) {
+    const wrap = document.createElement('div')
+    wrap.className = 'pdf-export-wrap pdf-page-block'
+    wrap.appendChild(unit)
+    return wrap
+  }
+  return wrapWithTitle(unit, title)
 }
 
 function wrapWithTitle(block: HTMLElement, title: string): HTMLElement {
@@ -349,17 +417,53 @@ async function captureWrapped(html2canvas: Html2CanvasFn, wrapped: HTMLElement):
   }
 }
 
+function unitIsAtomic(unit: HTMLElement): boolean {
+  return (
+    unit.classList.contains('pdf-split-card') ||
+    unit.querySelector('.chart-wrap') != null ||
+    unit.classList.contains('chart-card')
+  )
+}
+
 function appendCanvasToPdf(
   pdf: JsPdfDoc,
   canvas: HTMLCanvasElement,
   margin: number,
   contentW: number,
-  pageRef: { started: boolean },
+  pageRef: { started: boolean; cursorY: number },
+  options: { atomic?: boolean } = {},
 ) {
   const pageH = pdf.internal.pageSize.getHeight()
   const contentTop = margin + 10
-  const usableH = pageH - contentTop - margin
+  const footerReserve = margin + 6
+  const usableH = pageH - contentTop - footerReserve
   const pxPerMm = canvas.width / contentW
+  const imgHmm = canvas.height / pxPerMm
+
+  const ensureSpace = (neededHmm: number) => {
+    const spaceLeft = pageRef.started ? pageH - footerReserve - pageRef.cursorY : usableH
+    if (!pageRef.started || spaceLeft < neededHmm) {
+      if (pageRef.started) pdf.addPage()
+      pageRef.started = true
+      pageRef.cursorY = contentTop
+    }
+  }
+
+  if (options.atomic) {
+    let drawW = contentW
+    let drawH = imgHmm
+    if (drawH > usableH) {
+      const scale = usableH / drawH
+      drawH = usableH
+      drawW = contentW * scale
+    }
+    ensureSpace(drawH)
+    const x = margin + (contentW - drawW) / 2
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, pageRef.cursorY, drawW, drawH)
+    pageRef.cursorY += drawH + 4
+    return
+  }
+
   const slicePx = Math.max(1, Math.floor(usableH * pxPerMm))
   let offsetY = 0
 
@@ -375,9 +479,9 @@ function appendCanvasToPdf(
     ctx.drawImage(canvas, 0, offsetY, canvas.width, sliceH, 0, 0, canvas.width, sliceH)
     const sliceHmm = sliceH / pxPerMm
 
-    if (pageRef.started) pdf.addPage()
-    pageRef.started = true
-    pdf.addImage(slice.toDataURL('image/png'), 'PNG', margin, contentTop, contentW, sliceHmm)
+    ensureSpace(sliceHmm)
+    pdf.addImage(slice.toDataURL('image/png'), 'PNG', margin, pageRef.cursorY, contentW, sliceHmm)
+    pageRef.cursorY += sliceHmm + 2
     offsetY += sliceH
   }
 }
@@ -405,7 +509,7 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true })
   const margin = PDF_MARGIN_MM
   const contentW = pdf.internal.pageSize.getWidth() - margin * 2
-  const pageRef = { started: false }
+  const pageRef = { started: false, cursorY: 0 }
   let hasContent = false
 
   await waitForPdfPaint(200)
@@ -415,11 +519,23 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
     if (!sec) continue
     const block = blockForSection(sec, meta)
     if (!block) continue
-    const wrapped = sec.kind === 'cover' ? block : wrapWithTitle(block, sec.label)
-    const canvas = await captureWrapped(html2canvas, wrapped)
-    if (!canvas) continue
-    appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef)
-    hasContent = true
+
+    if (sec.kind === 'cover') {
+      const canvas = await captureWrapped(html2canvas, block)
+      if (!canvas) continue
+      appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, { atomic: true })
+      hasContent = true
+      continue
+    }
+
+    const units = splitCaptureUnits(block)
+    for (let i = 0; i < units.length; i += 1) {
+      const wrapped = wrapPdfUnit(units[i], i === 0 ? sec.label : null)
+      const canvas = await captureWrapped(html2canvas, wrapped)
+      if (!canvas) continue
+      appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, { atomic: unitIsAtomic(units[i]) })
+      hasContent = true
+    }
   }
 
   if (!hasContent) throw new Error('Не удалось собрать PDF: выбранные разделы не найдены на странице.')
@@ -431,7 +547,7 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
     pdf.setPage(page)
     pdf.setFontSize(8)
     pdf.setTextColor(130)
-    pdf.text(`${meta.title} · Daogreen · стр. ${page}/${pageCount}`, pageW / 2, pageH - 5, { align: 'center' })
+    pdf.text(`Daogreen · berry-calculator · ${page}/${pageCount}`, pageW / 2, pageH - 5, { align: 'center' })
   }
 
   const datePart = meta.date.replace(/\./g, '-')

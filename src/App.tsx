@@ -4,6 +4,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  LabelList,
   Legend,
   Line,
   LineChart,
@@ -16,6 +17,10 @@ import './App.css'
 import { CHART } from './chartColors'
 import { CalculationSummary } from './CalculationSummary'
 import { ChartExplainBlock } from './ChartExplainBlock'
+import { ModelCaveatsBlock } from './ModelCaveatsBlock'
+import { CROP_RESULT_CAVEATS, MODEL_DISCLAIMER, MODEL_LIMITATIONS_BULLETS } from './modelCaveats'
+import { buildDenseAxis, buildMonthAxisTicks, compareDualAxes, maxOf } from './chartAxis'
+import { KgBarTopLabel, KgTooltip, SqmMonthTooltip, YieldBarTopLabel, YieldSqmTooltip } from './chartComponents'
 import { AGRONOMIST_PURONEN_DENSITY, AGRONOMIST_PURONEN_PRESET, AGRONOMIST_PURONEN_SORT_NOTE } from './agronomistPresets'
 import { fmtFarmMoYear, fmtSqmMoYear, yearlyToMonthly, YIELD_COL } from './yieldFormat'
 import type { CropType, Scenario, Triple } from './types'
@@ -42,8 +47,6 @@ import { MobileSortsStrip } from './MobileSortsStrip'
 import { buildSortEconRows, SortEconComparePanel } from './SortEconComparePanel'
 import { SortComparePanel } from './SortComparePanel'
 import { SortsBar } from './SortsBar'
-import { ScenarioChartsStack } from './ScenarioChartsStack'
-import { buildFarmMonthlyData } from './scenarioChartData'
 import { computeSortInsights } from './sortInsights'
 import { extractFarmSettings, extractSortParams, mergeToCalculatorState } from './sortTypes'
 import type { SortsCollection } from './sortTypes'
@@ -468,6 +471,7 @@ function ResultsTable({
           </tbody>
         </table>
       </div>
+      <ModelCaveatsBlock items={CROP_RESULT_CAVEATS[crop]} compact />
     </section>
   )
 }
@@ -498,7 +502,6 @@ function App() {
   const [wizardStep, setWizardStep] = useState<WizardStep>(0)
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
   const [pdfExporting, setPdfExporting] = useState(false)
-  const [pdfExpandAll, setPdfExpandAll] = useState(false)
   const [sensitivityPct, setSensitivityPct] = useState(10)
   const [econOpen, setEconOpen] = useState(false)
   const [econ, setEcon] = useState<BerryEconState>(() => {
@@ -591,15 +594,26 @@ function App() {
     () => buildDnCycleWaveProfile(state, calendarScenario),
     [state, calendarScenario],
   )
-  const farmMonthlyData = useMemo(
-    () => buildFarmMonthlyData(state, sdResult, calendarScenario),
-    [state, sdResult, calendarScenario],
-  )
 
   const sensitivityLines = useMemo(
     () => buildSensitivityLines(state, sensitivityPct, calculateCrop),
     [state, sensitivityPct],
   )
+
+  const farmMonthlyData = useMemo(() => {
+    const area = state.farmAreaM2
+    const sdMonthlyShelf = sdResult.avg.marketShelfM2PerYear / 12
+    return MONTH_LABELS.map((month, index) => {
+      const row: Record<string, string | number> = { month }
+      if (state.cropType === 'SD' || state.cropType === 'both') {
+        row.КСД = roundTo(sdMonthlyShelf * area, 1)
+      }
+      if (state.cropType === 'DN' || state.cropType === 'both') {
+        row.НСД = roundTo(dnCalendar[index] * area, 1)
+      }
+      return row
+    })
+  }, [state.cropType, state.farmAreaM2, sdResult, dnCalendar])
 
   const peakFarmMonth = useMemo(() => {
     let bestMonth = MONTH_LABELS[0]
@@ -835,7 +849,6 @@ function App() {
     })
   }
 
-  const pdfFullView = pdfExpandAll || !clientMode
   const hasSdWarning = !isOrdered(state.sdYieldPerPlant)
   const hasDnWarning = !isOrdered(state.dnYieldPerPlant)
 
@@ -846,6 +859,44 @@ function App() {
     КСД: roundTo(sdResult[scenario].marketShelfM2PerYear, 1),
     НСД: roundTo(dnResult[scenario].marketShelfM2PerYear, 1),
   }))
+
+  const compareAxes = useMemo(() => {
+    const sdMax = maxOf(SCENARIOS.map((s) => sdResult[s].marketShelfM2PerYear))
+    const dnMax = maxOf(SCENARIOS.map((s) => dnResult[s].marketShelfM2PerYear))
+    return compareDualAxes(sdMax, dnMax)
+  }, [sdResult, dnResult])
+
+  const uncertaintyAxes = useMemo(() => {
+    const sdMax = maxOf([uncertaintySD.p10, uncertaintySD.p50, uncertaintySD.p90])
+    const dnMax = maxOf([uncertaintyDN.p10, uncertaintyDN.p50, uncertaintyDN.p90])
+    return compareDualAxes(sdMax, dnMax)
+  }, [uncertaintySD, uncertaintyDN])
+
+  const farmMonthlyAxes = useMemo(() => {
+    const sdVals = farmMonthlyData.map((row) => (typeof row.КСД === 'number' ? row.КСД : 0))
+    const dnVals = farmMonthlyData.map((row) => (typeof row.НСД === 'number' ? row.НСД : 0))
+    return {
+      sd: buildDenseAxis(maxOf(sdVals), { minStep: 1, tickCount: 6 }),
+      dn: buildDenseAxis(maxOf(dnVals), { minStep: 1, tickCount: 6 }),
+    }
+  }, [farmMonthlyData])
+
+  const dnCalendarAxis = useMemo(
+    () => buildDenseAxis(maxOf(dnCalendar), { minStep: 0.5, tickCount: 6 }),
+    [dnCalendar],
+  )
+
+  const dnProfileAxis = useMemo(() => {
+    const maxKg = maxOf(dnCycleProfileData.map((point) => point.marketKgPerMonth))
+    const cycleMonths = state.dnManualProfileEnabled ? 12 : state.dnCycleMonths[calendarScenario]
+    const xStep = cycleMonths <= 9 ? 1 : 2
+    return {
+      y: buildDenseAxis(maxKg, { minStep: 0.5, tickCount: 6 }),
+      xTicks: buildMonthAxisTicks(cycleMonths, xStep),
+      cycleMonths,
+      establish: state.dnEstablishMonths[calendarScenario],
+    }
+  }, [dnCycleProfileData, state.dnManualProfileEnabled, state.dnCycleMonths, state.dnEstablishMonths, calendarScenario])
 
   const percentileChartData = [
     { p: 'Нижняя 10%', КСД: roundTo(uncertaintySD.p10, 1), НСД: roundTo(uncertaintyDN.p10, 1) },
@@ -926,19 +977,16 @@ function App() {
 
   const runPdfExport = async (sectionIds: string[]) => {
     setPdfExporting(true)
-    setPdfExpandAll(true)
     const needCompare = sectionIds.some((id) => id === 'sorts-compare' || id === 'sorts-econ')
     const needEcon = sectionIds.includes('econ')
     const prevCompare = compareSortsOpen
     const prevEcon = econOpen
     if (needCompare) setCompareSortsOpen(true)
     if (needEcon) setEconOpen(true)
-    await waitForPdfPaint(needCompare || needEcon ? 650 : 850)
+    if (needCompare || needEcon) await waitForPdfPaint(450)
 
     try {
       const date = new Date().toLocaleDateString('ru-RU')
-      const fmtCrop = (result: CropResult) =>
-        `мин ${fmtSqmMoYear(result.min.marketM2PerMonth, result.min.marketM2PerYear)} · ср ${fmtSqmMoYear(result.avg.marketM2PerMonth, result.avg.marketM2PerYear)} · макс ${fmtSqmMoYear(result.max.marketM2PerMonth, result.max.marketM2PerYear)}`
       await exportSectionsToPdf(sectionIds, {
         title: 'Калькулятор урожайности клубники · Daogreen',
         subtitle: 'Daogreen — проектирование и запуск вертикальных ферм',
@@ -952,12 +1000,14 @@ function App() {
           { label: 'Сорт', value: activeSort?.name ?? '—' },
           { label: 'Плотность', value: `${state.density} раст/м²` },
           { label: 'Площадь фермы', value: `${state.farmAreaM2} м²` },
-          ...(state.cropType === 'SD' || state.cropType === 'both'
-            ? [{ label: 'КСД, кг/м²·мес · кг/м²/год', value: fmtCrop(sdResult) }]
-            : []),
-          ...(state.cropType === 'DN' || state.cropType === 'both'
-            ? [{ label: 'НСД, кг/м²·мес · кг/м²/год', value: fmtCrop(dnResult) }]
-            : []),
+          {
+            label: 'КСД (средний)',
+            value: `${fmtSqmMoYear(sdResult.avg.marketM2PerMonth, sdResult.avg.marketM2PerYear)} кг/м²·мес · кг/м²/год`,
+          },
+          {
+            label: 'НСД (средний)',
+            value: `${fmtSqmMoYear(dnResult.avg.marketM2PerMonth, dnResult.avg.marketM2PerYear)} кг/м²·мес · кг/м²/год`,
+          },
         ],
       })
       setPdfDialogOpen(false)
@@ -966,7 +1016,6 @@ function App() {
       const message = error instanceof Error ? error.message : 'Не удалось сформировать PDF.'
       showToast(message)
     } finally {
-      setPdfExpandAll(false)
       setCompareSortsOpen(prevCompare)
       setEconOpen(prevEcon)
       setPdfExporting(false)
@@ -1398,25 +1447,25 @@ function App() {
               </p>
               <ul className="guide-list">
                 <li>
-                  <strong>КСД, выход с куста (кг/цикл):</strong> Мин 0,3 · Средний 0,6 · Макс 1,1 (300–1200 г валовый).
-                  Товарный по опроснику: 0,2 / 0,55 / 0,95 — настраивается долей товарной (~0,85–0,92).
+                  <strong>КСД, валовый (кг/куст/цикл):</strong> Мин 0,3 · Средний 0,6 · Макс 1,1 (300–1200 г).
+                  <strong> Товарный ориентир:</strong> 0,2 / 0,55 / 0,95 кг/куст/цикл — через долю товарной ягоды (~0,85).
                 </li>
                 <li>
-                  <strong>КСД, длина цикла (мес):</strong> 2 / 2,5 / 3 — ~6 нед плодоношения + оборот. Распределение по
-                  неделям (10-10-20-35-20-5%) в модели КСД пока не задаётся — только для НСД есть волны.
+                  <strong>КСД, плодоношение:</strong> ~6 недель; распределение по неделям 10-10-20-35-20-5%. В модели
+                  помесячный сбор усреднён; недельный профиль пока не задаётся.
                 </li>
                 <li>
-                  <strong>НСД, выход с куста (кг/цикл):</strong> Мин 0,5 · Средний 0,75 · Макс 1,35 — «условный год»
-                  (8–9 мес плодоношения) ≈ один цикл при длине 6–9 мес.
+                  <strong>НСД, валовый (кг/куст/условный год):</strong> Мин 0,5 · Средний 0,75 · Макс 1,35.
+                  <strong> Товарный ориентир:</strong> 0,5 / 0,6 / 0,9. Условный год — период плодоношения, обычно до 8–9 мес.
                 </li>
                 <li>
-                  <strong>НСД, цикл / установление / оборот (мес):</strong> цикл 6–7–9; установление 4–5–6; оборот между
-                  циклами 4–5–6 (зимовка или смена, не пауза между волнами).
+                  <strong>НСД, цикл / установление / оборот (мес):</strong> цикл 6–7,5–9; установление 4–5–6; оборот 4–5–6
+                  (смена когорты, зимовка в холодильнике — нормальная практика).
                 </li>
                 <li>
-                  <strong>НСД, волны:</strong> планируйте 2 (макс 3 для редких сортов). Доли волн ~20-50-30% при 3
-                  волнах; при 2 волнах — ~35/65. Рассадный материал (фриго vs трей) сильно влияет на 1-ю волну — уточняйте
-                  вручную.
+                  <strong>НСД, волны:</strong> планируйте 2; 3-я — редкие сорта. Доли ~20-50-30% (3 волны) или ~35/65 (2 волны).
+                  Между волнами полного стопа нет. Первая волна: фриго ~10–15% урожая цикла, трей до ~30%; повреждённые
+                  цветоносы сильно снижают результат.
                 </li>
               </ul>
               <p className="hint">{AGRONOMIST_PURONEN_SORT_NOTE}</p>
@@ -1744,33 +1793,80 @@ function App() {
 
           <CalculationSummary state={state} sdResult={sdResult} dnResult={dnResult} />
 
+          {!clientMode && (
+          <section className="chart-card model-limits-card" id="pdf-sec-model-limits">
+            <h3>Ограничения модели и факторы риска</h3>
+            <p className="hint model-disclaimer">{MODEL_DISCLAIMER}</p>
+            <ModelCaveatsBlock items={MODEL_LIMITATIONS_BULLETS.slice(1)} />
+          </section>
+          )}
+
           {(state.cropType === 'SD' || state.cropType === 'both') && (
             <div id="pdf-sec-results-sd">
-              <ResultsTable crop="SD" title="Результаты КСД" result={sdResult} clientMode={clientMode && !pdfExpandAll} />
+              <ResultsTable crop="SD" title="Результаты КСД" result={sdResult} clientMode={clientMode} />
             </div>
           )}
           {(state.cropType === 'DN' || state.cropType === 'both') && (
             <div id="pdf-sec-results-dn">
-              <ResultsTable crop="DN" title="Результаты НСД" result={dnResult} clientMode={clientMode && !pdfExpandAll} />
+              <ResultsTable crop="DN" title="Результаты НСД" result={dnResult} clientMode={clientMode} />
             </div>
           )}
 
           <section className="chart-card" id="pdf-sec-chart-compare">
             <h3>Сравнение КСД и НСД (товарный урожай, кг/м²·мес · кг/м²/год)</h3>
             <ChartExplainBlock id="compare" />
-            <div className="chart-wrap">
-              <ResponsiveContainer width="100%" height={290}>
-                <BarChart data={chartData}>
+            <div className="chart-wrap chart-wrap-tall">
+              <ResponsiveContainer width="100%" height={320}>
+                <BarChart data={chartData} margin={{ top: 28, right: state.cropType === 'both' ? 16 : 8, left: 8, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="scenario" />
-                  <YAxis label={{ value: 'кг/м²/год', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
+                  {(state.cropType === 'SD' || state.cropType === 'both') && (
+                    <YAxis
+                      yAxisId="sd"
+                      orientation="left"
+                      domain={compareAxes.sd.domain}
+                      ticks={compareAxes.sd.ticks}
+                      label={{
+                        value: 'КСД, кг/м²/год',
+                        angle: -90,
+                        position: 'insideLeft',
+                        offset: 10,
+                      }}
+                    />
+                  )}
+                  {(state.cropType === 'DN' || state.cropType === 'both') && (
+                    <YAxis
+                      yAxisId="dn"
+                      orientation={state.cropType === 'both' ? 'right' : 'left'}
+                      domain={compareAxes.dn.domain}
+                      ticks={compareAxes.dn.ticks}
+                      label={{
+                        value: state.cropType === 'both' ? 'НСД, кг/м²/год' : 'НСД, кг/м²/год',
+                        angle: state.cropType === 'both' ? 90 : -90,
+                        position: state.cropType === 'both' ? 'insideRight' : 'insideLeft',
+                        offset: 10,
+                      }}
+                    />
+                  )}
+                  <Tooltip content={<YieldSqmTooltip />} />
                   <Legend />
-                  <Bar dataKey="КСД" fill={CHART.sd} />
-                  <Bar dataKey="НСД" fill={CHART.dn} />
+                  {(state.cropType === 'SD' || state.cropType === 'both') && (
+                    <Bar yAxisId="sd" dataKey="КСД" fill={CHART.sd} name="КСД">
+                      <LabelList content={<YieldBarTopLabel />} />
+                    </Bar>
+                  )}
+                  {(state.cropType === 'DN' || state.cropType === 'both') && (
+                    <Bar yAxisId="dn" dataKey="НСД" fill={CHART.dn} name="НСД">
+                      <LabelList content={<YieldBarTopLabel />} />
+                    </Bar>
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <p className="hint">
+              Над столбцами — товарный урожай в кг/м²·мес · кг/м²/год. При режиме «оба» у КСД и НСД отдельные
+              шкалы: НСД читается по правой оси с более частыми делениями.
+            </p>
           </section>
 
           <section className="chart-card" id="pdf-sec-chart-sensitivity">
@@ -1835,7 +1931,7 @@ function App() {
 
           <section className="chart-card" id="pdf-sec-chart-farm-monthly">
             <h3>Помесячный сбор с фермы, кг (товарный)</h3>
-            {!pdfExpandAll && (state.cropType === 'DN' || state.cropType === 'both') && (
+            {(state.cropType === 'DN' || state.cropType === 'both') && (
               <div className="toggle compact">
                 {SCENARIOS.map((scenario) => (
                   <button
@@ -1850,36 +1946,45 @@ function App() {
               </div>
             )}
             <ChartExplainBlock id="farm-monthly" />
-            {pdfExpandAll ? (
-              <ScenarioChartsStack
-                kind="farm-monthly"
-                cropType={state.cropType}
-                state={state}
-                sdResult={sdResult}
-              />
-            ) : (
-              <div className="chart-wrap">
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={farmMonthlyData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip
-                      formatter={(value) => [`${formatValue(Number(value), 1)} кг`, '']}
-                      labelFormatter={(label) => `Месяц: ${label}`}
+            <div className="chart-wrap chart-wrap-tall">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={farmMonthlyData} margin={{ top: 12, right: state.cropType === 'both' ? 12 : 4, left: 4, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  {(state.cropType === 'SD' || state.cropType === 'both') && (
+                    <YAxis
+                      yAxisId="sd"
+                      orientation="left"
+                      domain={farmMonthlyAxes.sd.domain}
+                      ticks={farmMonthlyAxes.sd.ticks}
+                      label={{ value: 'КСД, кг', angle: -90, position: 'insideLeft', offset: 8 }}
                     />
-                    <Legend />
-                    {(state.cropType === 'SD' || state.cropType === 'both') && (
-                      <Bar dataKey="КСД" fill={CHART.sd} name="КСД, кг с фермы" />
-                    )}
-                    {(state.cropType === 'DN' || state.cropType === 'both') && (
-                      <Bar dataKey="НСД" fill={CHART.dn} name="НСД, кг с фермы" />
-                    )}
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-            {!pdfExpandAll && (
+                  )}
+                  {(state.cropType === 'DN' || state.cropType === 'both') && (
+                    <YAxis
+                      yAxisId="dn"
+                      orientation={state.cropType === 'both' ? 'right' : 'left'}
+                      domain={farmMonthlyAxes.dn.domain}
+                      ticks={farmMonthlyAxes.dn.ticks}
+                      label={{
+                        value: 'НСД, кг',
+                        angle: state.cropType === 'both' ? 90 : -90,
+                        position: state.cropType === 'both' ? 'insideRight' : 'insideLeft',
+                        offset: 8,
+                      }}
+                    />
+                  )}
+                  <Tooltip content={<KgTooltip />} />
+                  <Legend />
+                  {(state.cropType === 'SD' || state.cropType === 'both') && (
+                    <Bar yAxisId="sd" dataKey="КСД" fill={CHART.sd} name="КСД, кг с фермы" />
+                  )}
+                  {(state.cropType === 'DN' || state.cropType === 'both') && (
+                    <Bar yAxisId="dn" dataKey="НСД" fill={CHART.dn} name="НСД, кг с фермы" />
+                  )}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
             <p className="hint">
               <strong>КСД:</strong> равномерный сбор — непрерывная ротация циклов (кусты меняются партиями, в
               среднем каждый месяц одинаково).
@@ -1891,12 +1996,6 @@ function App() {
               </strong>{' '}
               при площади {formatValue(state.farmAreaM2, 1)} м².
             </p>
-            )}
-            {pdfExpandAll && (
-              <p className="hint">
-                В PDF — все сценарии Мин / Средний / Макс. КСД и НСД пересчитаны для каждого сценария отдельно.
-              </p>
-            )}
           </section>
 
           {econOpen && (
@@ -1914,16 +2013,46 @@ function App() {
           <section className="chart-card" id="pdf-sec-chart-uncertainty">
             <h3>Диапазон неопределенности 10/50/90% (товарный кг/м²·мес · кг/м²/год)</h3>
             <ChartExplainBlock id="uncertainty" />
-            <div className="chart-wrap">
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={percentileChartData}>
+            <div className="chart-wrap chart-wrap-tall">
+              <ResponsiveContainer width="100%" height={320}>
+                <BarChart data={percentileChartData} margin={{ top: 28, right: state.cropType === 'both' ? 16 : 8, left: 8, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="p" />
-                  <YAxis />
-                  <Tooltip />
+                  {(state.cropType === 'SD' || state.cropType === 'both') && (
+                    <YAxis
+                      yAxisId="sd"
+                      orientation="left"
+                      domain={uncertaintyAxes.sd.domain}
+                      ticks={uncertaintyAxes.sd.ticks}
+                      label={{ value: 'КСД, кг/м²/год', angle: -90, position: 'insideLeft', offset: 10 }}
+                    />
+                  )}
+                  {(state.cropType === 'DN' || state.cropType === 'both') && (
+                    <YAxis
+                      yAxisId="dn"
+                      orientation={state.cropType === 'both' ? 'right' : 'left'}
+                      domain={uncertaintyAxes.dn.domain}
+                      ticks={uncertaintyAxes.dn.ticks}
+                      label={{
+                        value: 'НСД, кг/м²/год',
+                        angle: state.cropType === 'both' ? 90 : -90,
+                        position: state.cropType === 'both' ? 'insideRight' : 'insideLeft',
+                        offset: 10,
+                      }}
+                    />
+                  )}
+                  <Tooltip content={<YieldSqmTooltip />} />
                   <Legend />
-                  <Bar dataKey="КСД" fill={CHART.sdSoft} />
-                  <Bar dataKey="НСД" fill={CHART.dnSoft} />
+                  {(state.cropType === 'SD' || state.cropType === 'both') && (
+                    <Bar yAxisId="sd" dataKey="КСД" fill={CHART.sdSoft} name="КСД">
+                      <LabelList content={<YieldBarTopLabel />} />
+                    </Bar>
+                  )}
+                  {(state.cropType === 'DN' || state.cropType === 'both') && (
+                    <Bar yAxisId="dn" dataKey="НСД" fill={CHART.dnSoft} name="НСД">
+                      <LabelList content={<YieldBarTopLabel />} />
+                    </Bar>
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1939,55 +2068,48 @@ function App() {
           </section>
           )}
 
-          {pdfFullView && (state.cropType === 'DN' || state.cropType === 'both') && (
+          {!clientMode && (state.cropType === 'DN' || state.cropType === 'both') && (
           <section className="chart-card" id="pdf-sec-chart-dn-calendar">
             <h3>Календарь НСД по волнам (товарный кг/м² поверхности в месяц)</h3>
-            {!pdfExpandAll && (
-              <div className="toggle compact">
-                {SCENARIOS.map((scenario) => (
-                  <button
-                    key={scenario}
-                    type="button"
-                    className={calendarScenario === scenario ? 'active' : ''}
-                    onClick={() => setCalendarScenario(scenario)}
-                  >
-                    {SCENARIO_LABELS[scenario]}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="toggle compact">
+              {SCENARIOS.map((scenario) => (
+                <button
+                  key={scenario}
+                  type="button"
+                  className={calendarScenario === scenario ? 'active' : ''}
+                  onClick={() => setCalendarScenario(scenario)}
+                >
+                  {SCENARIO_LABELS[scenario]}
+                </button>
+              ))}
+            </div>
             <ChartExplainBlock id="dn-calendar" />
-            {pdfExpandAll ? (
-              <ScenarioChartsStack
-                kind="dn-calendar"
-                cropType={state.cropType}
-                state={state}
-                sdResult={sdResult}
-              />
-            ) : (
-              <div className="chart-wrap">
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={dnCalendarData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="marketKg" fill={CHART.sky} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
+            <div className="chart-wrap chart-wrap-tall">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={dnCalendarData} margin={{ top: 24, right: 8, left: 8, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis
+                    domain={dnCalendarAxis.domain}
+                    ticks={dnCalendarAxis.ticks}
+                    label={{ value: 'кг/м²·мес', angle: -90, position: 'insideLeft', offset: 8 }}
+                  />
+                  <Tooltip content={<SqmMonthTooltip />} />
+                  <Bar dataKey="marketKg" fill={CHART.sky} name="кг/м²·мес">
+                    <LabelList content={<KgBarTopLabel />} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
             <p className="hint">
               {state.dnManualProfileEnabled
                 ? 'Календарь из вашего ручного помесячного профиля.'
-                : pdfExpandAll
-                  ? 'В PDF — календарь для сценариев Мин, Средний и Макс.'
-                  : 'Сезон НСД на 1 м²: волны + перекрывающиеся когорты кустов (как на помесячном графике фермы).'}
+                : 'Сезон НСД на 1 м²: волны + перекрывающиеся когорты кустов (как на помесячном графике фермы).'}
             </p>
           </section>
           )}
 
-          {pdfFullView && (state.cropType === 'DN' || state.cropType === 'both') && (
+          {!clientMode && (state.cropType === 'DN' || state.cropType === 'both') && (
           <section className="chart-card" id="pdf-sec-chart-dn-profile">
             <h3>
               {state.dnManualProfileEnabled
@@ -1995,46 +2117,43 @@ function App() {
                 : 'Экспонента волны внутри цикла НСД (рост → пик → спад)'}
             </h3>
             <ChartExplainBlock id="dn-profile" />
-            {pdfExpandAll ? (
-              <ScenarioChartsStack
-                kind="dn-profile"
-                cropType={state.cropType}
-                state={state}
-                sdResult={sdResult}
-              />
-            ) : (
-              <div className="chart-wrap">
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={dnCycleProfileData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis
-                      dataKey="month"
-                      label={{
-                        value: state.dnManualProfileEnabled ? 'Месяц года' : 'Месяц цикла',
-                        position: 'insideBottom',
-                        offset: -4,
-                      }}
-                    />
-                    <YAxis />
-                    <Tooltip />
-                    <Line
-                      type="monotone"
-                      dataKey="marketKgPerMonth"
-                      stroke={CHART.berry}
-                      strokeWidth={2}
-                      dot={false}
-                      name="кг/м²/мес"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
+            <div className="chart-wrap chart-wrap-tall">
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={dnCycleProfileData} margin={{ top: 12, right: 12, left: 8, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="month"
+                    type="number"
+                    domain={[0, dnProfileAxis.cycleMonths]}
+                    ticks={dnProfileAxis.xTicks}
+                    tickFormatter={(value) => Number(value).toFixed(1)}
+                    label={{
+                      value: state.dnManualProfileEnabled ? 'Месяц года' : 'Месяц цикла',
+                      position: 'insideBottom',
+                      offset: -4,
+                    }}
+                  />
+                  <YAxis
+                    domain={dnProfileAxis.y.domain}
+                    ticks={dnProfileAxis.y.ticks}
+                    label={{ value: 'кг/м²·мес', angle: -90, position: 'insideLeft', offset: 8 }}
+                  />
+                  <Tooltip content={<SqmMonthTooltip />} />
+                  <Line
+                    type="monotone"
+                    dataKey="marketKgPerMonth"
+                    stroke={CHART.berry}
+                    strokeWidth={2}
+                    dot={false}
+                    name="кг/м²·мес"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
             <p className="hint">
               {state.dnManualProfileEnabled
                 ? 'Линия строится из 12 заданных вами помесячных значений на растение.'
-                : pdfExpandAll
-                  ? 'В PDF — профиль цикла для Мин, Средний и Макс (длина установления и волны зависят от сценария).'
-                  : 'График показывает неравномерный сбор в пределах цикла: установление, пик 1-й/2-й/3-й волны и спад.'}
+                : `До ~${formatValue(dnProfileAxis.establish, 1)} мес — установление когорты без сбора; затем пики 1-й и 2-й волны и спад в конце цикла.`}
             </p>
           </section>
           )}

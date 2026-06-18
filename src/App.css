@@ -421,40 +421,84 @@
   font-size: 18px;
 }
 
-.pdf-staging .result-card,
-.pdf-staging .chart-card,
-.pdf-staging .sources-card {
-  break-inside: avoid;
+.pdf-staging .pdf-split-unit {
+  margin-bottom: 8px;
 }
 
-.pdf-scenario-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 8px;
+.pdf-staging .pdf-split-card .scenario-card {
+  max-width: 100%;
 }
 
-.pdf-scenario-block {
-  border: 1px solid var(--dg-border-soft);
-  border-radius: var(--dg-radius-sm);
-  padding: 8px 10px 4px;
-  background: var(--dg-surface-2);
+.pdf-staging .pdf-results-table {
+  width: 100%;
+  table-layout: fixed;
+  font-size: 9px;
+  border-collapse: collapse;
 }
 
-.pdf-scenario-title {
-  margin: 0 0 6px;
-  font-size: 14px;
+.pdf-staging .pdf-results-table th,
+.pdf-staging .pdf-results-table td {
+  padding: 4px 5px;
+  line-height: 1.3;
+  vertical-align: top;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.pdf-staging .pdf-results-table th {
+  font-size: 8px;
   font-weight: 600;
-  color: var(--dg-brand-dark);
+  white-space: normal;
 }
 
-.pdf-staging .scenario-cards {
-  grid-template-columns: 1fr;
-  gap: 8px;
+.pdf-staging .pdf-results-table th:nth-child(1) {
+  width: 7%;
 }
 
-.pdf-staging .scenario-card {
-  break-inside: avoid;
+.pdf-staging .pdf-results-table th:nth-child(2) {
+  width: 9%;
+}
+
+.pdf-staging .pdf-results-table th:nth-child(3),
+.pdf-staging .pdf-results-table th:nth-child(4),
+.pdf-staging .pdf-results-table th:nth-child(5) {
+  width: 20%;
+}
+
+.pdf-staging .pdf-results-table th:nth-child(6) {
+  width: 14%;
+}
+
+.pdf-staging .pdf-results-table td:last-child {
+  font-size: 8.5px;
+}
+
+.pdf-staging .chart-wrap {
+  height: 260px !important;
+  min-height: 260px !important;
+}
+
+.chart-wrap-tall {
+  min-height: 300px;
+}
+
+.chart-tooltip {
+  background: #fff;
+  border: 1px solid var(--dg-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  box-shadow: var(--dg-shadow-sm);
+}
+
+.chart-tooltip-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: var(--dg-text);
+}
+
+.chart-tooltip p {
+  margin: 2px 0;
 }
 
 .pdf-staging .result-card,
@@ -1013,6 +1057,59 @@ button.primary:hover {
 .chart-explain-note {
   color: var(--dg-text-muted);
   font-size: 12px;
+}
+
+.model-caveats {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--dg-radius-sm);
+  border: 1px solid #f0d7a6;
+  background: #fffbeb;
+}
+
+.model-caveats-compact {
+  margin-top: 8px;
+  padding: 8px 10px;
+}
+
+.model-caveats-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.model-caveats ul {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: #78350f;
+  line-height: 1.45;
+}
+
+.model-caveats li {
+  margin: 4px 0;
+}
+
+.model-disclaimer {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--dg-brand);
+  background: var(--dg-brand-softer);
+  font-size: 12px;
+}
+
+.pdf-staging .model-caveats {
+  border-color: #e5e7eb;
+  background: #fffbeb;
+}
+
+.pdf-staging .model-caveats li {
+  color: #374151;
+}
+
+.pdf-staging .model-disclaimer {
+  background: #f4faf8;
 }
 
 .methods-card .methods-lead {

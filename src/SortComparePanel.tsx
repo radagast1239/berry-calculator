@@ -4,6 +4,8 @@ import type { CropType } from './types'
 import type { SortProfile } from './sortTypes'
 import { getBenchmarkLevel, BENCHMARK_LEVEL_LABELS } from './uiHelpers'
 import { computeSortInsights, YIELD_BENCHMARKS, type SortInsights } from './sortInsights'
+import { ModelCaveatsBlock } from './ModelCaveatsBlock'
+import { SORT_COMPARE_CAVEATS } from './modelCaveats'
 
 export function SortComparePanel({
   results,
@@ -89,6 +91,7 @@ export function SortComparePanel({
           </tbody>
         </table>
       </div>
+      <ModelCaveatsBlock items={SORT_COMPARE_CAVEATS} compact />
     </section>
   )
 }

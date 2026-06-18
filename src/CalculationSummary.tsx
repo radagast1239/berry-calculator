@@ -1,5 +1,6 @@
 import type { CalculatorState, CropResult } from './calculatorTypes'
 import { CALCULATION_STEPS } from './chartExplain'
+import { MODEL_DISCLAIMER } from './modelCaveats'
 import { fmtSqmMoYear } from './yieldFormat'
 
 export function CalculationSummary({
@@ -57,8 +58,9 @@ export function CalculationSummary({
       </div>
 
       <p className="hint chart-explain-note">
-        Графики ниже — визуализация тех же формул. У каждого блока есть пояснение «Что показывает / Как считается».
+        Графики ниже — визуализация тех же формул. У каждого блока — пояснение и блок «Ограничения и факторы риска».
       </p>
+      <p className="hint model-disclaimer">{MODEL_DISCLAIMER}</p>
     </section>
   )
 }
