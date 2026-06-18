@@ -7,7 +7,6 @@ import {
   Legend,
   Line,
   LineChart,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -67,7 +66,6 @@ import {
   SetupWizard,
   StickySummary,
   Toast,
-  useIsMobileGuide,
   useStickyVisible,
   type WizardStep,
 } from './uiHelpers'
@@ -510,7 +508,6 @@ function App() {
   })
   const [sortsSavedAt, setSortsSavedAt] = useState<number | null>(null)
   const stickyVisible = useStickyVisible()
-  const isMobileGuide = useIsMobileGuide()
 
   const showToast = useCallback((message: string) => {
     setToast(message)
@@ -1245,11 +1242,12 @@ function App() {
 
           {!clientMode && (
           <section className="crop-block guide-block">
-            <h3>Инструкция Daogreen</h3>
+            <details className="guide-outer">
+              <summary className="guide-outer-summary">Инструкция Daogreen</summary>
             <p className="hint guide-intro">
               Краткое руководство по полям калькулятора. Значок <strong>?</strong> у строки дублирует подсказку.
             </p>
-            <details open={!isMobileGuide}>
+            <details>
               <summary>1) Базовая логика расчёта</summary>
               <p className="hint">
                 Валовый урожай строится из выхода с растения за цикл и числа циклов в год. Затем применяются
@@ -1366,8 +1364,8 @@ function App() {
               <summary>7) Результаты, графики и ориентиры</summary>
               <ul className="guide-list">
                 <li>
-                  <strong>Карточки сценариев:</strong> товарный урожай на выбранной базе площади; цветовая шкала — сравнение
-                  с отраслевыми ориентирами (iFarm, Artechno и др.).
+                  <strong>Карточки сценариев:</strong> товарный урожай; цветовая шкала — сравнение с типовыми
+                  диапазонами подтверждённого и потолочного урожая.
                 </li>
                 <li>
                   <strong>Сравнение КСД и НСД:</strong> товарный урожай, кг/м² поверхности в год.
@@ -1386,7 +1384,7 @@ function App() {
             <details>
               <summary>8) Выгрузка PDF</summary>
               <p className="hint">
-                Кнопка «Выгрузка PDF» открывает список разделов: титул, результаты, графики, источники. Можно выбрать
+                Кнопка «Выгрузка PDF» открывает список разделов: титул, результаты, графики. Можно выбрать
                 пресет «Краткий», «Для клиента» или «Полный». Файл сохраняется на устройство, диалог печати не используется.
               </p>
             </details>
@@ -1429,6 +1427,7 @@ function App() {
               <p className="hint">{AGRONOMIST_PURONEN_SORT_NOTE}</p>
             </details>
             <p className="hint guide-footer">Daogreen · daogreen.ru · модель даёт ориентиры, не заменяет пилотный прогон.</p>
+            </details>
           </section>
           )}
 
@@ -1772,9 +1771,6 @@ function App() {
                   <YAxis label={{ value: 'кг/м²/год', angle: -90, position: 'insideLeft' }} />
                   <Tooltip />
                   <Legend />
-                  <ReferenceLine y={40} stroke={CHART.grid} strokeDasharray="4 4" label="Artechno 40" />
-                  <ReferenceLine y={41} stroke={CHART.ref} strokeDasharray="4 4" label="iFarm 41" />
-                  <ReferenceLine y={45} stroke={CHART.refDark} strokeDasharray="4 4" label="iFarm 45" />
                   <Bar dataKey="КСД" fill={CHART.sd} />
                   <Bar dataKey="НСД" fill={CHART.dn} />
                 </BarChart>
@@ -2007,20 +2003,6 @@ function App() {
             </p>
           </section>
           )}
-
-          <section className="sources-card" id="pdf-sec-sources">
-            <h3>Источники и доверие</h3>
-            <ul>
-              <li>iFarm Berries: структура КСД/НСД, потолочные и подтверждённые урожаи.</li>
-              <li>Ferme d'Hiver и Plenty: ориентиры по промышленной урожайности.</li>
-              <li>Artechno AVF+: целевой диапазон 40-60 кг/м²/год.</li>
-              <li>Agrotonomy и Lyine: технологические ориентиры для параметризации модели.</li>
-            </ul>
-            <p className="global-note">
-              Важно: модель даёт ориентиры и диапазон неопределённости, но не заменяет пилотный прогон под ваш
-              сорт, свет и конкретную схему опыления.
-            </p>
-          </section>
         </section>
       </section>
 

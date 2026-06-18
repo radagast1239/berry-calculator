@@ -1043,6 +1043,26 @@ button.primary:hover {
   padding: 12px;
 }
 
+.guide-outer {
+  margin: 0;
+}
+
+.guide-outer-summary {
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--dg-text);
+  list-style: none;
+}
+
+.guide-outer-summary::-webkit-details-marker {
+  display: none;
+}
+
+.guide-outer[open] .guide-outer-summary {
+  margin-bottom: 10px;
+}
+
 .guide-intro {
   margin: 0 0 10px;
 }

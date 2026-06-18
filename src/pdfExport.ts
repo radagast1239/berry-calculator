@@ -60,7 +60,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
   {
     id: 'chart-compare',
     label: 'Сравнение КСД и НСД',
-    description: 'Столбцы товарного урожая по сценариям и отраслевые ориентиры.',
+    description: 'Столбцы товарного урожая по сценариям Мин / Средний / Макс.',
     group: 'charts',
     selector: '#pdf-sec-chart-compare',
   },
@@ -126,13 +126,6 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
     group: 'results',
     selector: '#pdf-sec-econ',
   },
-  {
-    id: 'sources',
-    label: 'Источники и доверие',
-    description: 'Откуда ориентиры и ограничения модели.',
-    group: 'general',
-    selector: '#pdf-sec-sources',
-  },
 ]
 
 export const PDF_GROUP_LABELS: Record<PdfSectionGroup, string> = {
@@ -142,7 +135,7 @@ export const PDF_GROUP_LABELS: Record<PdfSectionGroup, string> = {
 }
 
 export const PDF_PRESETS = {
-  client: ['cover', 'methods', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly', 'sources'],
+  client: ['cover', 'methods', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
   brief: ['cover', 'methods', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
   investor: [
     'cover',
@@ -154,14 +147,13 @@ export const PDF_PRESETS = {
     'econ',
     'chart-compare',
     'chart-sensitivity',
-    'sources',
   ],
   full: PDF_SECTIONS.map((s) => s.id),
 }
 
 export const PDF_PRESET_HINTS: Record<keyof typeof PDF_PRESETS, string> = {
   brief: 'Титул, формулы, результаты и два главных графика.',
-  client: 'Как «Краткий» + источники — без сложной аналитики.',
+  client: 'Как «Краткий» — без сложной аналитики.',
   investor: 'Сорта, экономика, чувствительность — для обсуждения проекта.',
   full: 'Все разделы, включая волны НСД и неопределённость.',
 }

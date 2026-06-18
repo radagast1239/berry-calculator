@@ -98,6 +98,9 @@ describe('buildDnMonthlyCalendar', () => {
     expect(activeMonths).toBeGreaterThanOrEqual(6)
     const annual = calculateCrop(state, 'DN').avg.marketShelfM2PerYear
     expect(cal.reduce((sum, value) => sum + value, 0)).toBeCloseTo(annual, 1)
+    const min = Math.min(...cal)
+    const max = Math.max(...cal)
+    expect(max / min).toBeGreaterThan(1.3)
   })
 })
 

@@ -208,16 +208,19 @@ function buildDnCalendarShape(
   establishMonths: number,
   fruitingMonths: number,
   shares: number[],
+  turnaroundMonths: number,
 ): number[] {
   const months = new Array(12).fill(0)
   if (fruitingMonths <= 0 || !shares.length) return months
 
   const waveCenters = shares.length === 2 ? [0.28, 0.72] : [0.2, 0.52, 0.82]
-  const waveWidthMonths = Math.max(fruitingMonths / (shares.length * 2), 1.25)
-  // Ступенчатый посев/замена кустов — новая когорта каждые N мес, урожай идёт волнами весь год.
-  const cohortStagger = Math.max(fruitingMonths / (shares.length + 1), 1.5)
+  const waveWidthMonths = Math.max(fruitingMonths / (shares.length * 2.5), 0.75)
+  // Новая когорта — по паузе между сменами (оборот), иначе слишком частый посев сглаживает волны.
+  const cohortStagger = Math.max(turnaroundMonths, 2)
+  const cohortStartMin = -establishMonths - fruitingMonths
+  const cohortStartMax = 12 + fruitingMonths
 
-  for (let cohortStart = -12; cohortStart <= 14; cohortStart += cohortStagger) {
+  for (let cohortStart = cohortStartMin; cohortStart <= cohortStartMax; cohortStart += cohortStagger) {
     shares.forEach((share, waveIndex) => {
       const peakCalendarMonth = cohortStart + establishMonths + fruitingMonths * waveCenters[waveIndex]
       for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
@@ -245,7 +248,8 @@ export const buildDnMonthlyCalendar = (state: CalculatorState, scenario: Scenari
   if (fruitingMonths <= 0) return months
 
   const shares = getDnWaveShares(state, scenario)
-  const shape = buildDnCalendarShape(establish, fruitingMonths, shares)
+  const turnaround = state.dnTurnaroundMonths[scenario]
+  const shape = buildDnCalendarShape(establish, fruitingMonths, shares, turnaround)
   const shapeSum = shape.reduce((sum, value) => sum + value, 0)
   if (shapeSum <= 0) return months
 
