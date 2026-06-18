@@ -1,6 +1,7 @@
 import type { CalculatorState, CropResult } from './calculatorTypes'
 import { CALCULATION_STEPS } from './chartExplain'
 import { MODEL_DISCLAIMER } from './modelCaveats'
+import { ParametersSummary } from './ParametersSummary'
 import { fmtSqmMoYear } from './yieldFormat'
 
 export function CalculationSummary({
@@ -17,6 +18,8 @@ export function CalculationSummary({
 
   return (
     <section className="chart-card methods-card" id="pdf-sec-methods">
+      <ParametersSummary state={state} cropType={state.cropType} embedded />
+      <div className="methods-section-divider" aria-hidden="true" />
       <h3>Как читать расчёт</h3>
       <p className="hint methods-lead">
         Ниже — цепочка формул модели. Все «кг/м²» в карточках результатов — на{' '}

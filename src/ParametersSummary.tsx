@@ -52,7 +52,16 @@ function TripleTable({ title, rows }: { title: string; rows: ParamRow[] }) {
   )
 }
 
-export function ParametersSummary({ state, cropType }: { state: CalculatorState; cropType: CropType }) {
+export function ParametersSummary({
+  state,
+  cropType,
+  embedded = false,
+}: {
+  state: CalculatorState
+  cropType: CropType
+  /** Внутри карточки «Как читать расчёт» — без отдельной рамки. */
+  embedded?: boolean
+}) {
   const showSd = cropType === 'SD' || cropType === 'both'
   const showDn = cropType === 'DN' || cropType === 'both'
 
@@ -77,9 +86,9 @@ export function ParametersSummary({ state, cropType }: { state: CalculatorState;
     { label: 'Масса ягоды', unit: 'г', values: state.berryMassG },
   ]
 
-  return (
-    <section className="chart-card params-summary-card" id="pdf-sec-inputs">
-      <h3>Параметры расчёта (Мин / Средний / Макс)</h3>
+  const body = (
+    <>
+      <h3 className="params-summary-title">Параметры расчёта (Мин / Средний / Макс)</h3>
       <p className="hint">
         Все сценарные диапазоны, заданные в калькуляторе. Общие поля (плотность, площадь, коэффициенты потерь)
         одинаковы для всех сценариев.
@@ -111,6 +120,20 @@ export function ParametersSummary({ state, cropType }: { state: CalculatorState;
       <TripleTable title="Качество" rows={commonRows} />
       {showSd && <TripleTable title="КСД" rows={sdRows} />}
       {showDn && <TripleTable title="НСД" rows={dnRows} />}
+    </>
+  )
+
+  if (embedded) {
+    return (
+      <div className="params-summary-embedded" id="pdf-sec-inputs">
+        {body}
+      </div>
+    )
+  }
+
+  return (
+    <section className="chart-card params-summary-card" id="pdf-sec-inputs">
+      {body}
     </section>
   )
 }

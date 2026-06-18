@@ -15,7 +15,6 @@ import {
 import './App.css'
 import { CHART } from './chartColors'
 import { CalculationSummary } from './CalculationSummary'
-import { ParametersSummary } from './ParametersSummary'
 import { ChartExplainBlock } from './ChartExplainBlock'
 import { ModelCaveatsBlock } from './ModelCaveatsBlock'
 import { CROP_RESULT_CAVEATS, MODEL_DISCLAIMER, MODEL_LIMITATIONS_BULLETS } from './modelCaveats'
@@ -1372,6 +1371,9 @@ function App() {
       <section className="layout">
         <aside className="panel no-print-panel">
           <h2>Параметры</h2>
+          <p className="params-jump-link">
+            <a href="#pdf-sec-inputs">Сводка Мин / Средний / Макс →</a>
+          </p>
 
           <SortsBar
             sorts={sorts}
@@ -1958,6 +1960,8 @@ function App() {
             </p>
           </div>
 
+          <CalculationSummary state={state} sdResult={sdResult} dnResult={dnResult} />
+
           {compareSortsOpen && sorts.length > 0 && (
             <SortComparePanel
               sorts={sorts}
@@ -1981,10 +1985,6 @@ function App() {
           <p className="active-sort-label no-print">
             Расчёт для сорта: <strong>{activeSort?.name ?? '—'}</strong>
           </p>
-
-          <ParametersSummary state={state} cropType={state.cropType} />
-
-          <CalculationSummary state={state} sdResult={sdResult} dnResult={dnResult} />
 
           {!clientMode && (
           <section className="chart-card model-limits-card" id="pdf-sec-model-limits">

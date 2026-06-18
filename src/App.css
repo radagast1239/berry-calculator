@@ -1240,7 +1240,48 @@ button.primary:hover {
   line-height: 1.35;
 }
 
-.params-summary-card .params-single-grid {
+.params-jump-link {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+
+.params-jump-link a {
+  color: var(--dg-brand);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.params-jump-link a:hover {
+  text-decoration: underline;
+}
+
+.params-summary-embedded,
+.params-summary-card {
+  scroll-margin-top: 72px;
+}
+
+.params-summary-embedded {
+  padding: 14px 16px;
+  margin: 0 0 16px;
+  border: 1px solid var(--dg-brand-light);
+  border-radius: var(--dg-radius-sm);
+  background: linear-gradient(180deg, var(--dg-brand-softer) 0%, var(--dg-surface) 100%);
+}
+
+.params-summary-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  color: var(--dg-brand);
+}
+
+.methods-section-divider {
+  height: 1px;
+  margin: 4px 0 18px;
+  background: var(--dg-border-soft);
+}
+
+.params-summary-card .params-single-grid,
+.params-summary-embedded .params-single-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 8px 16px;

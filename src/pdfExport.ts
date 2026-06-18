@@ -21,7 +21,7 @@ const PDF_W_PX = 794
 const PDF_SCALE = 2
 const PDF_MARGIN_MM = 12
 /** Меняйте при правках вёрстки PDF — видно в подвале файла. */
-export const PDF_LAYOUT_VERSION = 9
+export const PDF_LAYOUT_VERSION = 10
 
 export type PdfSectionGroup = 'general' | 'results' | 'charts'
 
