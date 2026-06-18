@@ -474,10 +474,18 @@
 }
 
 .pdf-staging .chart-wrap {
+  margin-bottom: 10px !important;
+  overflow: visible !important;
+}
+
+.pdf-staging .chart-wrap-tall {
+  height: 340px !important;
+  min-height: 340px !important;
+}
+
+.pdf-staging .chart-wrap:not(.chart-wrap-tall) {
   height: 300px !important;
   min-height: 300px !important;
-  margin-bottom: 10px !important;
-  overflow: hidden !important;
 }
 
 body.pdf-exporting [data-pdf-capture] {

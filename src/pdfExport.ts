@@ -13,7 +13,7 @@ const PDF_W_PX = 794
 const PDF_SCALE = 2
 const PDF_MARGIN_MM = 12
 /** Меняйте при правках вёрстки PDF — видно в подвале файла. */
-export const PDF_LAYOUT_VERSION = 6
+export const PDF_LAYOUT_VERSION = 7
 
 export type PdfSectionGroup = 'general' | 'results' | 'charts'
 
@@ -231,23 +231,83 @@ function waitForPaint(ms = 120): Promise<void> {
   })
 }
 
-function copySvgFromSource(source: HTMLElement, clone: HTMLElement) {
-  const srcSvgs = source.querySelectorAll('svg.recharts-surface')
-  const dstSvgs = Array.from(clone.querySelectorAll('svg.recharts-surface'))
-  srcSvgs.forEach((src, index) => {
-    const dst = dstSvgs[index]
-    if (!dst) return
-    const width = src.getBoundingClientRect().width || src.clientWidth || 700
-    const height = src.getBoundingClientRect().height || src.clientHeight || 280
-    const fresh = src.cloneNode(true) as SVGElement
-    fresh.setAttribute('width', String(Math.round(width)))
-    fresh.setAttribute('height', String(Math.round(height)))
-    fresh.style.width = `${Math.round(width)}px`
-    fresh.style.height = `${Math.round(height)}px`
-    fresh.style.display = 'block'
-    fresh.style.overflow = 'visible'
-    dst.replaceWith(fresh)
-  })
+function measureChartWrap(wrap: HTMLElement): { width: number; height: number } {
+  const rect = wrap.getBoundingClientRect()
+  const tall = wrap.classList.contains('chart-wrap-tall')
+  return {
+    width: Math.max(Math.round(rect.width), wrap.clientWidth, 320),
+    height: Math.max(Math.round(rect.height), wrap.clientHeight, tall ? 340 : 300),
+  }
+}
+
+async function svgToCanvas(svg: SVGElement, width: number, height: number): Promise<HTMLCanvasElement | null> {
+  const clone = svg.cloneNode(true) as SVGElement
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  const viewBox = svg.getAttribute('viewBox')
+  if (viewBox) clone.setAttribute('viewBox', viewBox)
+  clone.setAttribute('width', String(Math.round(width)))
+  clone.setAttribute('height', String(Math.round(height)))
+  clone.style.overflow = 'visible'
+  const serialized = new XMLSerializer().serializeToString(clone)
+  const blob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => resolve(image)
+      image.onerror = () => reject(new Error('SVG render failed'))
+      image.src = url
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(width * PDF_SCALE)
+    canvas.height = Math.round(height * PDF_SCALE)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.scale(PDF_SCALE, PDF_SCALE)
+    ctx.drawImage(img, 0, 0, width, height)
+    return canvas
+  } catch {
+    return null
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+/** Recharts SVG → PNG: html2canvas обрезает линии, снимаем график с живого SVG. */
+async function rasterizeChartWrapsFromLive(source: HTMLElement, clone: HTMLElement) {
+  const srcWraps = source.querySelectorAll('.chart-wrap')
+  const dstWraps = clone.querySelectorAll('.chart-wrap')
+
+  for (let index = 0; index < srcWraps.length; index += 1) {
+    const srcWrap = srcWraps[index]
+    const dstWrap = dstWraps[index]
+    if (!(srcWrap instanceof HTMLElement) || !(dstWrap instanceof HTMLElement)) continue
+
+    const svg = srcWrap.querySelector('svg.recharts-surface')
+    if (!(svg instanceof SVGSVGElement)) continue
+
+    const { width, height } = measureChartWrap(srcWrap)
+    const canvas = await svgToCanvas(svg, width, height)
+    if (!canvas) continue
+
+    const img = document.createElement('img')
+    img.alt = ''
+    img.src = canvas.toDataURL('image/png')
+    img.style.display = 'block'
+    img.style.width = '100%'
+    img.style.height = `${height}px`
+    img.style.maxWidth = '100%'
+
+    dstWrap.innerHTML = ''
+    dstWrap.style.width = '100%'
+    dstWrap.style.height = `${height}px`
+    dstWrap.style.minHeight = `${height}px`
+    dstWrap.style.overflow = 'visible'
+    dstWrap.appendChild(img)
+  }
 }
 
 function suppressLiveUiForPdf(): () => void {
@@ -311,12 +371,12 @@ function compactResultsTables(root: HTMLElement) {
   })
 }
 
-function cloneSectionForPdf(source: HTMLElement): HTMLElement {
+async function cloneSectionForPdf(source: HTMLElement): Promise<HTMLElement> {
   const clone = source.cloneNode(true) as HTMLElement
   clone.style.display = 'block'
   clone.style.visibility = 'visible'
   clone.style.opacity = '1'
-  copySvgFromSource(source, clone)
+  await rasterizeChartWrapsFromLive(source, clone)
   prepareCloneForPdf(clone)
   return clone
 }
@@ -509,7 +569,7 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
       liveSection.scrollIntoView({ block: 'center' })
       await waitForPaint(sec.group === 'charts' ? 550 : 280)
 
-      const block = cloneSectionForPdf(liveSection)
+      const block = await cloneSectionForPdf(liveSection)
       const canvas = await captureStagingBlock(html2canvas, block)
       if (!canvas) continue
 
