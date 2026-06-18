@@ -255,16 +255,33 @@ function prepareCloneForPdf(root: HTMLElement) {
   root.querySelectorAll('.no-print-table').forEach((el) => {
     el.classList.remove('no-print-table')
   })
+  root.querySelectorAll('.recharts-legend-wrapper').forEach((el) => {
+    el.remove()
+  })
   root.querySelectorAll('.chart-wrap').forEach((el) => {
     const node = el as HTMLElement
-    node.style.height = '300px'
-    node.style.minHeight = '300px'
-    node.style.marginBottom = '8px'
+    node.style.height = '280px'
+    node.style.minHeight = '280px'
+    node.style.marginBottom = '4px'
+    node.style.overflow = 'visible'
   })
-  root.querySelectorAll('.chart-footnote, .chart-card > .hint').forEach((el) => {
+  root.querySelectorAll('.chart-legend-row').forEach((el) => {
     const node = el as HTMLElement
-    node.style.marginTop = '16px'
+    node.style.marginTop = '6px'
+    node.style.marginBottom = '10px'
+  })
+  root.querySelectorAll('.chart-footnote').forEach((el) => {
+    const node = el as HTMLElement
+    node.style.marginTop = '18px'
+    node.style.paddingTop = '8px'
     node.style.lineHeight = '1.55'
+    node.style.display = 'block'
+  })
+  root.querySelectorAll('.model-disclaimer').forEach((el) => {
+    const node = el as HTMLElement
+    node.style.lineHeight = '1.55'
+    node.style.padding = '10px 12px'
+    node.style.overflow = 'visible'
   })
   compactResultsTables(root)
 }
@@ -322,6 +339,30 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
+function splitMethodsCard(block: HTMLElement): HTMLElement[] | null {
+  if (!block.classList.contains('methods-card')) return null
+
+  const units: HTMLElement[] = []
+  const main = document.createElement('div')
+  main.className = 'pdf-split-unit pdf-methods-main'
+  block.childNodes.forEach((node) => {
+    if (!(node instanceof HTMLElement)) return
+    if (node.classList.contains('model-disclaimer')) return
+    main.appendChild(node.cloneNode(true))
+  })
+  if (main.childNodes.length > 0) units.push(main)
+
+  const disclaimer = block.querySelector(':scope > .model-disclaimer')
+  if (disclaimer) {
+    const wrap = document.createElement('div')
+    wrap.className = 'pdf-split-unit pdf-methods-disclaimer'
+    wrap.appendChild(disclaimer.cloneNode(true))
+    units.push(wrap)
+  }
+
+  return units.length > 0 ? units : null
+}
+
 function splitChartCard(block: HTMLElement): HTMLElement[] | null {
   const chartWrap = block.querySelector('.chart-wrap')
   if (!chartWrap) return null
@@ -332,15 +373,19 @@ function splitChartCard(block: HTMLElement): HTMLElement[] | null {
   block.childNodes.forEach((node) => {
     if (!(node instanceof HTMLElement)) return
     if (node.classList.contains('chart-wrap')) return
+    if (node.classList.contains('chart-legend-row')) return
     if (node.classList.contains('hint') || node.classList.contains('chart-footnote')) return
     header.appendChild(node.cloneNode(true))
   })
   if (header.childNodes.length > 0) units.push(header)
 
-  const chartUnit = document.createElement('div')
-  chartUnit.className = 'pdf-split-unit pdf-chart-only'
-  chartUnit.appendChild(chartWrap.cloneNode(true))
-  units.push(chartUnit)
+  const chartBody = document.createElement('div')
+  chartBody.className = 'pdf-split-unit pdf-chart-only'
+  chartBody.appendChild(chartWrap.cloneNode(true))
+  block.querySelectorAll(':scope > .chart-legend-row').forEach((el) => {
+    chartBody.appendChild(el.cloneNode(true))
+  })
+  units.push(chartBody)
 
   block.querySelectorAll(':scope > .hint, :scope > .chart-footnote').forEach((el) => {
     const wrap = document.createElement('div')
@@ -378,6 +423,9 @@ function splitCaptureUnits(block: HTMLElement): HTMLElement[] {
     }
     return units
   }
+
+  const methodsUnits = splitMethodsCard(block)
+  if (methodsUnits) return methodsUnits
 
   const chartUnits = splitChartCard(block)
   if (chartUnits) return chartUnits
@@ -455,9 +503,10 @@ async function captureWrapped(html2canvas: Html2CanvasFn, wrapped: HTMLElement):
   applyStagingLayout(staging)
   staging.appendChild(wrapped)
   document.body.appendChild(staging)
-  await waitForPaint(150)
+  const paintMs = wrapped.querySelector('.chart-wrap') ? 280 : 150
+  await waitForPaint(paintMs)
   try {
-    const canvas = await captureBlock(html2canvas, staging)
+    const canvas = await captureBlock(html2canvas, wrapped)
     if (!canvas || canvas.width < 2 || canvas.height < 2) return null
     return canvas
   } finally {

@@ -1,22 +1,49 @@
-import { Legend, type LegendProps } from 'recharts'
 import { fmtNum, fmtSqmMoYear, yearlyToMonthly } from './yieldFormat'
+import type { CropType } from './types'
 
-/** Отступы Recharts: легенда сверху, подписи осей снизу — без наезда на текст под графиком. */
+/** Отступы Recharts: легенда снаружи графика (HTML), снизу — место под подписи осей. */
 export const CHART_MARGIN = {
-  compact: { top: 36, right: 12, left: 8, bottom: 28 },
-  dual: { top: 36, right: 16, left: 8, bottom: 28 },
-  line: { top: 16, right: 12, left: 12, bottom: 40 },
+  compact: { top: 12, right: 12, left: 12, bottom: 36 },
+  dual: { top: 12, right: 16, left: 12, bottom: 36 },
+  line: { top: 12, right: 12, left: 14, bottom: 52 },
 } as const
 
-export const CHART_LEGEND_PROPS: LegendProps = {
-  verticalAlign: 'top',
-  align: 'right',
-  iconSize: 10,
-  wrapperStyle: { fontSize: 12, lineHeight: '16px', paddingBottom: 4 },
+export interface ChartLegendItem {
+  color: string
+  label: string
 }
 
-export function ChartLegend(props?: Partial<LegendProps>) {
-  return <Legend {...CHART_LEGEND_PROPS} {...props} />
+export function ChartLegendRow({ items }: { items: ChartLegendItem[] }) {
+  if (!items.length) return null
+  return (
+    <div className="chart-legend-row" aria-label="Легенда графика">
+      {items.map((item) => (
+        <span key={item.label} className="chart-legend-item">
+          <span className="chart-legend-swatch" style={{ background: item.color }} aria-hidden />
+          {item.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+export function buildCropLegendItems(
+  cropType: CropType,
+  variant: 'yield' | 'kg' | 'soft',
+  colors: { sd: string; dn: string; sdSoft: string; dnSoft: string },
+): ChartLegendItem[] {
+  const items: ChartLegendItem[] = []
+  if (cropType === 'SD' || cropType === 'both') {
+    const color = variant === 'soft' ? colors.sdSoft : colors.sd
+    const label = variant === 'kg' ? 'КСД, кг с фермы' : 'КСД'
+    items.push({ color, label })
+  }
+  if (cropType === 'DN' || cropType === 'both') {
+    const color = variant === 'soft' ? colors.dnSoft : colors.dn
+    const label = variant === 'kg' ? 'НСД, кг с фермы' : 'НСД'
+    items.push({ color, label })
+  }
+  return items
 }
 
 interface ChartTooltipProps {

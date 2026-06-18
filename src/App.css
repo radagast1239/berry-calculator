@@ -474,16 +474,35 @@
 }
 
 .pdf-staging .chart-wrap {
-  height: 300px !important;
-  min-height: 300px !important;
-  margin-bottom: 10px !important;
-  overflow: hidden;
+  height: 280px !important;
+  min-height: 280px !important;
+  margin-bottom: 4px !important;
+  overflow: visible !important;
+}
+
+.pdf-staging .chart-legend-row {
+  margin: 6px 0 12px !important;
 }
 
 .pdf-staging .chart-footnote,
-.pdf-staging .chart-card > .hint {
-  margin-top: 16px !important;
+.pdf-staging .pdf-chart-footnote {
+  margin-top: 20px !important;
+  padding-top: 8px !important;
   line-height: 1.55 !important;
+}
+
+.pdf-staging .pdf-methods-disclaimer {
+  padding: 4px 0 8px;
+}
+
+.pdf-staging .model-disclaimer {
+  line-height: 1.55;
+  overflow: visible;
+  padding: 10px 12px;
+}
+
+.pdf-staging .pdf-chart-header {
+  margin-bottom: 8px;
 }
 
 .pdf-staging .chart-card,
@@ -492,19 +511,6 @@
   overflow: visible;
   height: auto;
   min-height: 0;
-}
-
-.pdf-staging .model-disclaimer {
-  line-height: 1.55;
-  overflow: visible;
-}
-
-.pdf-staging .pdf-chart-footnote {
-  padding-top: 4px;
-}
-
-.pdf-staging .pdf-chart-header {
-  margin-bottom: 8px;
 }
 
 .chart-wrap-tall {
@@ -1315,8 +1321,33 @@ button.primary:hover {
 
 .chart-card .chart-footnote {
   margin-top: 16px;
-  padding-top: 2px;
+  padding-top: 4px;
   clear: both;
+}
+
+.chart-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  margin: 6px 0 2px;
+  padding: 0 2px;
+  font-size: 12px;
+  color: #374151;
+  line-height: 1.4;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 .chart-card h3 {

@@ -20,8 +20,9 @@ import { ModelCaveatsBlock } from './ModelCaveatsBlock'
 import { CROP_RESULT_CAVEATS, MODEL_DISCLAIMER, MODEL_LIMITATIONS_BULLETS } from './modelCaveats'
 import { buildDenseAxis, buildMonthAxisTicks, compareDualAxes, maxOf } from './chartAxis'
 import {
+  buildCropLegendItems,
   CHART_MARGIN,
-  ChartLegend,
+  ChartLegendRow,
   KgBarTopLabel,
   KgTooltip,
   SqmMonthTooltip,
@@ -645,6 +646,19 @@ function App() {
   const dnCycleProfileData = useMemo(
     () => buildDnCycleWaveProfile(state, calendarScenario),
     [state, calendarScenario],
+  )
+
+  const compareLegend = useMemo(
+    () => buildCropLegendItems(state.cropType, 'yield', CHART),
+    [state.cropType],
+  )
+  const farmLegend = useMemo(
+    () => buildCropLegendItems(state.cropType, 'kg', CHART),
+    [state.cropType],
+  )
+  const uncertaintyLegend = useMemo(
+    () => buildCropLegendItems(state.cropType, 'soft', CHART),
+    [state.cropType],
   )
 
   const sensitivityLines = useMemo(
@@ -2008,7 +2022,6 @@ function App() {
                     />
                   )}
                   <Tooltip content={<YieldSqmTooltip />} />
-                  <ChartLegend />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
                     <Bar yAxisId="sd" dataKey="КСД" fill={CHART.sd} name="КСД">
                       <LabelList content={<YieldBarTopLabel />} />
@@ -2022,6 +2035,7 @@ function App() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <ChartLegendRow items={compareLegend} />
             <p className="hint chart-footnote">
               Над столбцами — товарный урожай в кг/м²·мес · кг/м²/год. При режиме «оба» у КСД и НСД отдельные
               шкалы: НСД читается по правой оси с более частыми делениями.
@@ -2137,7 +2151,6 @@ function App() {
                     />
                   )}
                   <Tooltip content={<KgTooltip />} />
-                  <ChartLegend />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
                     <Bar yAxisId="sd" dataKey="КСД" fill={CHART.sd} name="КСД, кг с фермы" />
                   )}
@@ -2147,6 +2160,7 @@ function App() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <ChartLegendRow items={farmLegend} />
             <p className="hint chart-footnote">
               <strong>КСД:</strong> ротация когорт с недельным профилем 10-10-20-35-20-5% в конце цикла (пики
               смещены к завершению цикла).
@@ -2186,7 +2200,7 @@ function App() {
                     domain={[0, sdProfileAxis.cycleMonths]}
                     ticks={sdProfileAxis.xTicks}
                     tickFormatter={(value) => Number(value).toFixed(1)}
-                    label={{ value: 'Месяц цикла', position: 'insideBottom', offset: -4 }}
+                    label={{ value: 'Месяц цикла', position: 'bottom', offset: 8 }}
                   />
                   <YAxis
                     domain={sdProfileAxis.y.domain}
@@ -2259,7 +2273,6 @@ function App() {
                     />
                   )}
                   <Tooltip content={<YieldSqmTooltip />} />
-                  <ChartLegend />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
                     <Bar yAxisId="sd" dataKey="КСД" fill={CHART.sdSoft} name="КСД">
                       <LabelList content={<YieldBarTopLabel />} />
@@ -2273,6 +2286,7 @@ function App() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <ChartLegendRow items={uncertaintyLegend} />
             <p className="hint chart-footnote">
               Монте-Карло: случайные прогоны в пределах ваших Мин/Макс и неопределённости {state.uncertaintyPct}%.
               Нижняя 10% — осторожная оценка, 50% — медиана, 90% — оптимистичная. Карточки сценариев выше — отдельно,
@@ -2346,8 +2360,8 @@ function App() {
                     tickFormatter={(value) => Number(value).toFixed(1)}
                     label={{
                       value: state.dnManualProfileEnabled ? 'Месяц года' : 'Месяц цикла',
-                      position: 'insideBottom',
-                      offset: -4,
+                      position: 'bottom',
+                      offset: 8,
                     }}
                   />
                   <YAxis
