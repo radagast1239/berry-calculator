@@ -3,9 +3,9 @@ import type { CropType } from './types'
 
 /** Отступы Recharts: легенда снаружи графика (HTML), снизу — место под подписи осей. */
 export const CHART_MARGIN = {
-  compact: { top: 12, right: 12, left: 12, bottom: 36 },
-  dual: { top: 12, right: 16, left: 12, bottom: 36 },
-  line: { top: 12, right: 12, left: 14, bottom: 52 },
+  compact: { top: 12, right: 12, left: 12, bottom: 44 },
+  dual: { top: 12, right: 16, left: 12, bottom: 44 },
+  line: { top: 12, right: 12, left: 14, bottom: 56 },
 } as const
 
 export interface ChartLegendItem {

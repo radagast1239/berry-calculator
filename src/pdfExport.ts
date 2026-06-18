@@ -255,21 +255,47 @@ function refreshChartSvgsFromLive(liveRoot: HTMLElement, unit: HTMLElement) {
   prepareChartUnitForPdf(unit)
 }
 
+function suppressLiveUiForPdf(): () => void {
+  document.body.classList.add('pdf-exporting')
+  const hidden: Array<{ el: HTMLElement; visibility: string }> = []
+  document.querySelectorAll('.app, .sticky-summary, .toast, .wizard-backdrop, .modal-backdrop').forEach((node) => {
+    if (!(node instanceof HTMLElement)) return
+    hidden.push({ el: node, visibility: node.style.visibility })
+    node.style.visibility = 'hidden'
+  })
+  return () => {
+    document.body.classList.remove('pdf-exporting')
+    hidden.forEach(({ el, visibility }) => {
+      el.style.visibility = visibility
+    })
+  }
+}
+
+function hideClonedPageNoise(clonedDoc: Document, clonedRoot: HTMLElement) {
+  clonedDoc.querySelectorAll('.app, .sticky-summary, .toast, .wizard-backdrop, .modal-backdrop').forEach((el) => {
+    ;(el as HTMLElement).style.display = 'none'
+  })
+  clonedRoot.style.background = '#ffffff'
+  clonedRoot.querySelectorAll('.chart-wrap').forEach((el) => {
+    ;(el as HTMLElement).style.overflow = 'hidden'
+  })
+}
+
 function prepareChartUnitForPdf(root: HTMLElement) {
   root.querySelectorAll('.recharts-legend-wrapper').forEach((el) => el.remove())
   root.querySelectorAll('.chart-wrap').forEach((el) => {
     const node = el as HTMLElement
-    node.style.height = '280px'
-    node.style.minHeight = '280px'
-    node.style.marginBottom = '4px'
-    node.style.overflow = 'visible'
+    node.style.height = '300px'
+    node.style.minHeight = '300px'
+    node.style.marginBottom = '8px'
+    node.style.overflow = 'hidden'
   })
   root.querySelectorAll('.chart-legend-row').forEach((el) => {
     const node = el as HTMLElement
     node.style.display = 'flex'
     node.style.flexWrap = 'wrap'
     node.style.gap = '8px 18px'
-    node.style.margin = '8px 0 12px'
+    node.style.margin = '10px 0 16px'
     node.style.padding = '0 4px'
     node.style.fontSize = '12px'
     node.style.lineHeight = '1.4'
@@ -305,16 +331,28 @@ function prepareCloneForPdf(root: HTMLElement) {
   prepareChartUnitForPdf(root)
   root.querySelectorAll('.chart-footnote').forEach((el) => {
     const node = el as HTMLElement
-    node.style.marginTop = '18px'
-    node.style.paddingTop = '8px'
+    node.style.marginTop = '0'
+    node.style.paddingTop = '4px'
+    node.style.paddingBottom = '8px'
     node.style.lineHeight = '1.55'
     node.style.display = 'block'
+  })
+  root.querySelectorAll('.pdf-chart-footnote .hint, .pdf-chart-footnote .chart-footnote').forEach((el) => {
+    const node = el as HTMLElement
+    node.style.marginTop = '0'
+    node.style.padding = '8px 4px 12px'
   })
   root.querySelectorAll('.model-disclaimer').forEach((el) => {
     const node = el as HTMLElement
     node.style.lineHeight = '1.55'
-    node.style.padding = '10px 12px'
+    node.style.padding = '12px 14px'
+    node.style.margin = '0'
     node.style.overflow = 'visible'
+    node.style.display = 'block'
+  })
+  root.querySelectorAll('.methods-example li').forEach((el) => {
+    ;(el as HTMLElement).style.lineHeight = '1.55'
+    ;(el as HTMLElement).style.marginBottom = '6px'
   })
   compactResultsTables(root)
 }
@@ -418,6 +456,10 @@ function splitChartCard(block: HTMLElement): HTMLElement[] | null {
   block.querySelectorAll(':scope > .chart-legend-row').forEach((el) => {
     chartBody.appendChild(el.cloneNode(true))
   })
+  const gap = document.createElement('div')
+  gap.className = 'pdf-chart-gap'
+  gap.style.height = '16px'
+  chartBody.appendChild(gap)
   units.push(chartBody)
 
   block.querySelectorAll(':scope > .hint, :scope > .chart-footnote').forEach((el) => {
@@ -467,13 +509,20 @@ function splitCaptureUnits(block: HTMLElement): HTMLElement[] {
 }
 
 function wrapPdfUnit(unit: HTMLElement, title: string | null): HTMLElement {
+  const wrap = title ? wrapWithTitle(unit, title) : document.createElement('div')
   if (!title) {
-    const wrap = document.createElement('div')
     wrap.className = 'pdf-export-wrap pdf-page-block'
     wrap.appendChild(unit)
-    return wrap
   }
-  return wrapWithTitle(unit, title)
+  if (unit.classList.contains('pdf-chart-footnote') || unit.classList.contains('pdf-methods-disclaimer')) {
+    wrap.style.marginTop = '8px'
+    wrap.style.paddingTop = '16px'
+    wrap.style.paddingBottom = '8px'
+  }
+  if (unit.classList.contains('pdf-chart-only')) {
+    wrap.style.paddingBottom = '8px'
+  }
+  return wrap
 }
 
 function wrapWithTitle(block: HTMLElement, title: string): HTMLElement {
@@ -509,10 +558,12 @@ function applyStagingLayout(staging: HTMLElement) {
 }
 
 async function captureBlock(html2canvas: Html2CanvasFn, block: HTMLElement): Promise<HTMLCanvasElement> {
-  const width = Math.max(block.scrollWidth, block.offsetWidth, 200)
-  const height = Math.max(block.scrollHeight, block.offsetHeight, 40)
+  const rect = block.getBoundingClientRect()
+  const width = Math.max(Math.ceil(rect.width), block.scrollWidth, block.offsetWidth, 200)
+  const height = Math.max(Math.ceil(rect.height), block.scrollHeight, block.offsetHeight, 40)
   block.style.width = `${width}px`
   block.style.minHeight = `${height}px`
+  block.style.background = '#ffffff'
   return html2canvas(block, {
     scale: PDF_SCALE,
     backgroundColor: '#ffffff',
@@ -527,6 +578,19 @@ async function captureBlock(html2canvas: Html2CanvasFn, block: HTMLElement): Pro
     scrollY: 0,
     foreignObjectRendering: false,
     imageTimeout: 15000,
+    ignoreElements: (el) => {
+      if (block.contains(el)) return false
+      if (el.classList.contains('pdf-staging')) return false
+      if (el.closest('.pdf-staging')) return false
+      if (el.classList.contains('app')) return true
+      if (el.classList.contains('sticky-summary')) return true
+      return false
+    },
+    onclone: (clonedDoc, clonedElement) => {
+      if (clonedElement instanceof HTMLElement) {
+        hideClonedPageNoise(clonedDoc, clonedElement)
+      }
+    },
   })
 }
 
@@ -554,7 +618,12 @@ async function captureWrapped(html2canvas: Html2CanvasFn, wrapped: HTMLElement):
 }
 
 function unitIsAtomic(unit: HTMLElement): boolean {
-  return unit.classList.contains('pdf-split-card') || unit.classList.contains('pdf-chart-only')
+  return (
+    unit.classList.contains('pdf-split-card') ||
+    unit.classList.contains('pdf-chart-only') ||
+    unit.classList.contains('pdf-chart-footnote') ||
+    unit.classList.contains('pdf-methods-disclaimer')
+  )
 }
 
 function appendCanvasToPdf(
@@ -646,6 +715,8 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
 
   await waitForPdfPaint(200)
 
+  const restoreLiveUi = suppressLiveUiForPdf()
+  try {
   for (const id of ordered) {
     const sec = secMap.get(id)
     if (!sec) continue
@@ -673,6 +744,9 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
       appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, { atomic: unitIsAtomic(unit) })
       hasContent = true
     }
+  }
+  } finally {
+    restoreLiveUi()
   }
 
   if (!hasContent) throw new Error('Не удалось собрать PDF: выбранные разделы не найдены на странице.')

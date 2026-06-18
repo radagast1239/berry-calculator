@@ -474,10 +474,20 @@
 }
 
 .pdf-staging .chart-wrap {
-  height: 280px !important;
-  min-height: 280px !important;
-  margin-bottom: 4px !important;
-  overflow: visible !important;
+  height: 300px !important;
+  min-height: 300px !important;
+  margin-bottom: 8px !important;
+  overflow: hidden !important;
+}
+
+body.pdf-exporting .app,
+body.pdf-exporting .sticky-summary,
+body.pdf-exporting .toast {
+  visibility: hidden !important;
+}
+
+body.pdf-exporting .pdf-staging {
+  visibility: visible !important;
 }
 
 .pdf-staging .chart-legend-row,
