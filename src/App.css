@@ -1621,7 +1621,7 @@ thead {
 @media (max-width: 520px) {
   .app {
     padding: 10px;
-    padding-bottom: 96px;
+    padding-bottom: 108px;
   }
 
   .header {
@@ -1691,7 +1691,56 @@ thead {
   }
 
   .chart-wrap {
-    height: 240px;
+    height: 260px;
+    min-height: 260px;
+    margin-bottom: 10px;
+    overflow: visible;
+  }
+
+  .chart-wrap.chart-wrap-tall {
+    height: 300px;
+    min-height: 300px;
+  }
+
+  .chart-legend-row {
+    margin-top: 12px;
+    margin-bottom: 8px;
+    gap: 6px 12px;
+    font-size: 11px;
+  }
+
+  .chart-card .chart-footnote {
+    margin-top: 20px;
+    padding-top: 8px;
+  }
+
+  .chart-card::after {
+    content: '';
+    display: block;
+    height: 52px;
+  }
+
+  .chart-explain {
+    padding: 10px 12px;
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+
+  .chart-card h3 {
+    font-size: 15px;
+    line-height: 1.4;
+    margin-bottom: 12px;
+  }
+
+  .model-disclaimer {
+    padding: 12px;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .has-sticky-summary .chart-card,
+  .has-sticky-summary .result-card {
+    scroll-margin-top: 58px;
   }
 
   table {

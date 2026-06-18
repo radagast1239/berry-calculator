@@ -21,11 +21,15 @@ import { CROP_RESULT_CAVEATS, MODEL_DISCLAIMER, MODEL_LIMITATIONS_BULLETS } from
 import { buildDenseAxis, buildMonthAxisTicks, compareDualAxes, maxOf } from './chartAxis'
 import {
   buildCropLegendItems,
-  CHART_MARGIN,
   ChartLegendRow,
   KgBarTopLabel,
   KgTooltip,
+  lineXAxisLabel,
+  monthXAxisProps,
+  pickChartMargin,
+  pickChartTick,
   SqmMonthTooltip,
+  yAxisTitle,
   YieldBarTopLabel,
   YieldSqmTooltip,
 } from './chartComponents'
@@ -84,6 +88,7 @@ import {
   StickySummary,
   Toast,
   useStickyVisible,
+  useIsMobileGuide,
   type WizardStep,
 } from './uiHelpers'
 
@@ -563,6 +568,7 @@ function App() {
   })
   const [sortsSavedAt, setSortsSavedAt] = useState<number | null>(null)
   const stickyVisible = useStickyVisible()
+  const isMobile = useIsMobileGuide()
 
   const showToast = useCallback((message: string) => {
     setToast(message)
@@ -1989,22 +1995,19 @@ function App() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={chartData}
-                  margin={state.cropType === 'both' ? CHART_MARGIN.dual : CHART_MARGIN.compact}
+                  margin={pickChartMargin(state.cropType === 'both' ? 'dual' : 'compact', isMobile)}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="scenario" />
+                  <XAxis dataKey="scenario" tick={pickChartTick(isMobile)} />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
                     <YAxis
                       yAxisId="sd"
                       orientation="left"
                       domain={compareAxes.sd.domain}
                       ticks={compareAxes.sd.ticks}
-                      label={{
-                        value: 'КСД, кг/м²/год',
-                        angle: -90,
-                        position: 'insideLeft',
-                        offset: 10,
-                      }}
+                      tick={pickChartTick(isMobile)}
+                      width={isMobile ? 28 : undefined}
+                      label={yAxisTitle('КСД, кг/м²/год', isMobile, 'left')}
                     />
                   )}
                   {(state.cropType === 'DN' || state.cropType === 'both') && (
@@ -2013,23 +2016,20 @@ function App() {
                       orientation={state.cropType === 'both' ? 'right' : 'left'}
                       domain={compareAxes.dn.domain}
                       ticks={compareAxes.dn.ticks}
-                      label={{
-                        value: state.cropType === 'both' ? 'НСД, кг/м²/год' : 'НСД, кг/м²/год',
-                        angle: state.cropType === 'both' ? 90 : -90,
-                        position: state.cropType === 'both' ? 'insideRight' : 'insideLeft',
-                        offset: 10,
-                      }}
+                      tick={pickChartTick(isMobile)}
+                      width={isMobile ? 28 : undefined}
+                      label={yAxisTitle('НСД, кг/м²/год', isMobile, state.cropType === 'both' ? 'right' : 'left')}
                     />
                   )}
                   <Tooltip content={<YieldSqmTooltip />} />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
                     <Bar yAxisId="sd" dataKey="КСД" fill={CHART.sd} name="КСД">
-                      <LabelList content={<YieldBarTopLabel />} />
+                      {!isMobile && <LabelList content={<YieldBarTopLabel />} />}
                     </Bar>
                   )}
                   {(state.cropType === 'DN' || state.cropType === 'both') && (
                     <Bar yAxisId="dn" dataKey="НСД" fill={CHART.dn} name="НСД">
-                      <LabelList content={<YieldBarTopLabel />} />
+                      {!isMobile && <LabelList content={<YieldBarTopLabel />} />}
                     </Bar>
                   )}
                 </BarChart>
@@ -2123,17 +2123,19 @@ function App() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={farmMonthlyData}
-                  margin={state.cropType === 'both' ? CHART_MARGIN.dual : CHART_MARGIN.compact}
+                  margin={pickChartMargin(state.cropType === 'both' ? 'dual' : 'compact', isMobile)}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
+                  <XAxis dataKey="month" tick={pickChartTick(isMobile)} {...monthXAxisProps(isMobile)} />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
                     <YAxis
                       yAxisId="sd"
                       orientation="left"
                       domain={farmMonthlyAxes.sd.domain}
                       ticks={farmMonthlyAxes.sd.ticks}
-                      label={{ value: 'КСД, кг', angle: -90, position: 'insideLeft', offset: 8 }}
+                      tick={pickChartTick(isMobile)}
+                      width={isMobile ? 28 : undefined}
+                      label={yAxisTitle('КСД, кг', isMobile, 'left')}
                     />
                   )}
                   {(state.cropType === 'DN' || state.cropType === 'both') && (
@@ -2142,12 +2144,9 @@ function App() {
                       orientation={state.cropType === 'both' ? 'right' : 'left'}
                       domain={farmMonthlyAxes.dn.domain}
                       ticks={farmMonthlyAxes.dn.ticks}
-                      label={{
-                        value: 'НСД, кг',
-                        angle: state.cropType === 'both' ? 90 : -90,
-                        position: state.cropType === 'both' ? 'insideRight' : 'insideLeft',
-                        offset: 8,
-                      }}
+                      tick={pickChartTick(isMobile)}
+                      width={isMobile ? 28 : undefined}
+                      label={yAxisTitle('НСД, кг', isMobile, state.cropType === 'both' ? 'right' : 'left')}
                     />
                   )}
                   <Tooltip content={<KgTooltip />} />
@@ -2192,7 +2191,7 @@ function App() {
             <ChartExplainBlock id="sd-profile" />
             <div className="chart-wrap chart-wrap-tall">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={sdCycleProfileData} margin={CHART_MARGIN.line}>
+                <LineChart data={sdCycleProfileData} margin={pickChartMargin('line', isMobile)}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis
                     dataKey="month"
@@ -2200,12 +2199,15 @@ function App() {
                     domain={[0, sdProfileAxis.cycleMonths]}
                     ticks={sdProfileAxis.xTicks}
                     tickFormatter={(value) => Number(value).toFixed(1)}
-                    label={{ value: 'Месяц цикла', position: 'bottom', offset: 8 }}
+                    tick={pickChartTick(isMobile)}
+                    label={lineXAxisLabel('Месяц цикла', isMobile)}
                   />
                   <YAxis
                     domain={sdProfileAxis.y.domain}
                     ticks={sdProfileAxis.y.ticks}
-                    label={{ value: 'кг/м²·мес', angle: -90, position: 'insideLeft', offset: 8 }}
+                    tick={pickChartTick(isMobile)}
+                    width={isMobile ? 30 : undefined}
+                    label={yAxisTitle('кг/м²·мес', isMobile, 'left')}
                   />
                   <Tooltip content={<SqmMonthTooltip />} />
                   <Line
@@ -2245,17 +2247,19 @@ function App() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={percentileChartData}
-                  margin={state.cropType === 'both' ? CHART_MARGIN.dual : CHART_MARGIN.compact}
+                  margin={pickChartMargin(state.cropType === 'both' ? 'dual' : 'compact', isMobile)}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="p" />
+                  <XAxis dataKey="p" tick={pickChartTick(isMobile)} />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
                     <YAxis
                       yAxisId="sd"
                       orientation="left"
                       domain={uncertaintyAxes.sd.domain}
                       ticks={uncertaintyAxes.sd.ticks}
-                      label={{ value: 'КСД, кг/м²/год', angle: -90, position: 'insideLeft', offset: 10 }}
+                      tick={pickChartTick(isMobile)}
+                      width={isMobile ? 28 : undefined}
+                      label={yAxisTitle('КСД, кг/м²/год', isMobile, 'left')}
                     />
                   )}
                   {(state.cropType === 'DN' || state.cropType === 'both') && (
@@ -2264,23 +2268,20 @@ function App() {
                       orientation={state.cropType === 'both' ? 'right' : 'left'}
                       domain={uncertaintyAxes.dn.domain}
                       ticks={uncertaintyAxes.dn.ticks}
-                      label={{
-                        value: 'НСД, кг/м²/год',
-                        angle: state.cropType === 'both' ? 90 : -90,
-                        position: state.cropType === 'both' ? 'insideRight' : 'insideLeft',
-                        offset: 10,
-                      }}
+                      tick={pickChartTick(isMobile)}
+                      width={isMobile ? 28 : undefined}
+                      label={yAxisTitle('НСД, кг/м²/год', isMobile, state.cropType === 'both' ? 'right' : 'left')}
                     />
                   )}
                   <Tooltip content={<YieldSqmTooltip />} />
                   {(state.cropType === 'SD' || state.cropType === 'both') && (
                     <Bar yAxisId="sd" dataKey="КСД" fill={CHART.sdSoft} name="КСД">
-                      <LabelList content={<YieldBarTopLabel />} />
+                      {!isMobile && <LabelList content={<YieldBarTopLabel />} />}
                     </Bar>
                   )}
                   {(state.cropType === 'DN' || state.cropType === 'both') && (
                     <Bar yAxisId="dn" dataKey="НСД" fill={CHART.dnSoft} name="НСД">
-                      <LabelList content={<YieldBarTopLabel />} />
+                      {!isMobile && <LabelList content={<YieldBarTopLabel />} />}
                     </Bar>
                   )}
                 </BarChart>
@@ -2317,17 +2318,19 @@ function App() {
             <ChartExplainBlock id="dn-calendar" />
             <div className="chart-wrap chart-wrap-tall">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dnCalendarData} margin={CHART_MARGIN.compact}>
+                <BarChart data={dnCalendarData} margin={pickChartMargin('compact', isMobile)}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
+                  <XAxis dataKey="month" tick={pickChartTick(isMobile)} {...monthXAxisProps(isMobile)} />
                   <YAxis
                     domain={dnCalendarAxis.domain}
                     ticks={dnCalendarAxis.ticks}
-                    label={{ value: 'кг/м²·мес', angle: -90, position: 'insideLeft', offset: 8 }}
+                    tick={pickChartTick(isMobile)}
+                    width={isMobile ? 30 : undefined}
+                    label={yAxisTitle('кг/м²·мес', isMobile, 'left')}
                   />
                   <Tooltip content={<SqmMonthTooltip />} />
                   <Bar dataKey="marketKg" fill={CHART.sky} name="кг/м²·мес">
-                    <LabelList content={<KgBarTopLabel />} />
+                    {!isMobile && <LabelList content={<KgBarTopLabel />} />}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -2350,7 +2353,7 @@ function App() {
             <ChartExplainBlock id="dn-profile" />
             <div className="chart-wrap chart-wrap-tall">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dnCycleProfileData} margin={CHART_MARGIN.line}>
+                <LineChart data={dnCycleProfileData} margin={pickChartMargin('line', isMobile)}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis
                     dataKey="month"
@@ -2358,16 +2361,18 @@ function App() {
                     domain={[0, dnProfileAxis.cycleMonths]}
                     ticks={dnProfileAxis.xTicks}
                     tickFormatter={(value) => Number(value).toFixed(1)}
-                    label={{
-                      value: state.dnManualProfileEnabled ? 'Месяц года' : 'Месяц цикла',
-                      position: 'bottom',
-                      offset: 8,
-                    }}
+                    tick={pickChartTick(isMobile)}
+                    label={lineXAxisLabel(
+                      state.dnManualProfileEnabled ? 'Месяц года' : 'Месяц цикла',
+                      isMobile,
+                    )}
                   />
                   <YAxis
                     domain={dnProfileAxis.y.domain}
                     ticks={dnProfileAxis.y.ticks}
-                    label={{ value: 'кг/м²·мес', angle: -90, position: 'insideLeft', offset: 8 }}
+                    tick={pickChartTick(isMobile)}
+                    width={isMobile ? 30 : undefined}
+                    label={yAxisTitle('кг/м²·мес', isMobile, 'left')}
                   />
                   <Tooltip content={<SqmMonthTooltip />} />
                   <Line

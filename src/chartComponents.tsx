@@ -8,6 +8,71 @@ export const CHART_MARGIN = {
   line: { top: 12, right: 12, left: 14, bottom: 56 },
 } as const
 
+/** Узкий экран: больше места снизу под месяцы, подписи осей Y убираются (есть HTML-легенда). */
+export const CHART_MARGIN_MOBILE = {
+  compact: { top: 14, right: 6, left: 6, bottom: 58 },
+  dual: { top: 20, right: 6, left: 6, bottom: 40 },
+  line: { top: 12, right: 6, left: 10, bottom: 72 },
+} as const
+
+export type ChartMarginKey = keyof typeof CHART_MARGIN
+
+export function pickChartMargin(key: ChartMarginKey, isMobile: boolean) {
+  return isMobile ? CHART_MARGIN_MOBILE[key] : CHART_MARGIN[key]
+}
+
+export const CHART_TICK = { fontSize: 11 }
+export const CHART_TICK_MOBILE = { fontSize: 9 }
+
+export function pickChartTick(isMobile: boolean) {
+  return isMobile ? CHART_TICK_MOBILE : CHART_TICK
+}
+
+type YAxisSide = 'left' | 'right'
+
+/** На мобильном подписи осей Y скрываем — шкалы читаются по делениям, смысл в легенде под графиком. */
+export function yAxisTitle(
+  text: string,
+  isMobile: boolean,
+  side: YAxisSide = 'left',
+):
+  | {
+      value: string
+      angle: number
+      position: 'insideLeft' | 'insideRight'
+      offset: number
+      style: { fontSize: number }
+    }
+  | undefined {
+  if (isMobile) return undefined
+  return {
+    value: text,
+    angle: side === 'right' ? 90 : -90,
+    position: side === 'right' ? 'insideRight' : 'insideLeft',
+    offset: 10,
+    style: { fontSize: 11 },
+  }
+}
+
+export function monthXAxisProps(isMobile: boolean) {
+  if (!isMobile) return {}
+  return {
+    angle: -42,
+    textAnchor: 'end' as const,
+    height: 56,
+    interval: 0 as const,
+  }
+}
+
+export function lineXAxisLabel(text: string, isMobile: boolean) {
+  return {
+    value: text,
+    position: 'bottom' as const,
+    offset: isMobile ? 18 : 8,
+    style: { fontSize: isMobile ? 10 : 12 },
+  }
+}
+
 export interface ChartLegendItem {
   color: string
   label: string
