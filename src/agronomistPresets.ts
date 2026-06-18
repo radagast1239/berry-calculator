@@ -45,5 +45,7 @@ export const AGRONOMIST_PURONEN_PRESET: Pick<
   dnWave2Share: { min: 0.45, avg: 0.45, max: 0.5 },
 }
 
+export const AGRONOMIST_PURONEN_DENSITY = 20
+
 export const AGRONOMIST_PURONEN_SORT_NOTE =
-  'Параметры по опроснику агронома (Пуронен, 06.2026). Условный год НСД ≈ 8–9 мес плодоношения в одном цикле.'
+  'Без сорта · 20 раст/м² · опросник агронома (Пуронен, 06.2026). Условный год НСД ≈ 8–9 мес плодоношения в одном цикле.'

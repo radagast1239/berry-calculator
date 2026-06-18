@@ -15,7 +15,7 @@ import {
 } from 'recharts'
 import './App.css'
 import { CHART } from './chartColors'
-import { AGRONOMIST_PURONEN_PRESET, AGRONOMIST_PURONEN_SORT_NOTE } from './agronomistPresets'
+import { AGRONOMIST_PURONEN_DENSITY, AGRONOMIST_PURONEN_PRESET, AGRONOMIST_PURONEN_SORT_NOTE } from './agronomistPresets'
 import { fmtFarmMoYear, fmtSqmMoYear, yearlyToMonthly, YIELD_COL } from './yieldFormat'
 import type { CropType, Scenario, Triple } from './types'
 import type { CalculatorState, CropResult } from './calculatorTypes'
@@ -759,8 +759,9 @@ function App() {
       ...prev,
       ...AGRONOMIST_PURONEN_PRESET,
       cropType: 'both',
+      density: AGRONOMIST_PURONEN_DENSITY,
     }))
-    showToast('Загружен опрос агронома. Укажите плотность и площадь фермы под ваш проект.')
+    showToast(`Опрос агронома: ${AGRONOMIST_PURONEN_DENSITY} раст/м², без привязки к сорту. Укажите площадь фермы.`)
   }, [setState, showToast])
 
   const handleNotesChange = useCallback(
@@ -1225,7 +1226,7 @@ function App() {
               <button type="button" className="ghost-btn" onClick={applyAgronomistPreset}>
                 Загрузить опрос агронома
               </button>
-              <p className="hint">КСД/НСД по С. Пуронен (июнь 2026) — волны, циклы, выход с куста</p>
+              <p className="hint">20 раст/м² · без сорта · Пуронен 06.2026</p>
             </div>
           )}
 
