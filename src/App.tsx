@@ -58,7 +58,7 @@ import {
 import type { DnSeedlingMaterial } from './cropProfileConstants'
 import { DEFAULT_SD_WEEKLY_SHARES } from './cropProfileConstants'
 import { PdfExportDialog } from './PdfExportDialog'
-import { exportSectionsToPdf, waitForPdfPaint } from './pdfExport'
+import { exportSectionsToPdf, PDF_LAYOUT_VERSION, waitForPdfPaint } from './pdfExport'
 import { MobileSortsStrip } from './MobileSortsStrip'
 import { buildSortEconRows, SortEconComparePanel } from './SortEconComparePanel'
 import { SortComparePanel } from './SortComparePanel'
@@ -1105,7 +1105,7 @@ function App() {
         ],
       })
       setPdfDialogOpen(false)
-      showToast('PDF сохранён на устройство.')
+      showToast(`PDF сохранён (макет v${PDF_LAYOUT_VERSION}).`)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Не удалось сформировать PDF.'
       showToast(message)

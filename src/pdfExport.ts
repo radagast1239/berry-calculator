@@ -12,6 +12,12 @@ async function loadPdfLibs(): Promise<{ html2canvas: Html2CanvasFn; jsPDF: JsPdf
 const PDF_W_PX = 794
 const PDF_SCALE = 2
 const PDF_MARGIN_MM = 12
+/** Меняйте при правках вёрстки PDF — видно в подвале файла. */
+export const PDF_LAYOUT_VERSION = 3
+
+/** Отступы между частями графика (px, до scale). */
+const PDF_GAP_CHART_TO_LEGEND = 32
+const PDF_GAP_LEGEND_TO_FOOTNOTE = 28
 
 export type PdfSectionGroup = 'general' | 'results' | 'charts'
 
@@ -610,7 +616,7 @@ function appendCanvasToPdf(
   margin: number,
   contentW: number,
   pageRef: { started: boolean; cursorY: number },
-  options: { atomic?: boolean; gapAfter?: number } = {},
+  options: { atomic?: boolean; gapAfter?: number; minSpaceBefore?: number } = {},
 ) {
   const pageH = pdf.internal.pageSize.getHeight()
   const contentTop = margin + 10
@@ -624,6 +630,14 @@ function appendCanvasToPdf(
     if (!pageRef.started || spaceLeft < neededHmm) {
       if (pageRef.started) pdf.addPage()
       pageRef.started = true
+      pageRef.cursorY = contentTop
+    }
+  }
+
+  if (options.minSpaceBefore && pageRef.started) {
+    const spaceLeft = pageH - footerReserve - pageRef.cursorY
+    if (spaceLeft < options.minSpaceBefore) {
+      pdf.addPage()
       pageRef.cursorY = contentTop
     }
   }
@@ -663,6 +677,7 @@ function appendCanvasToPdf(
     pageRef.cursorY += sliceHmm + 2
     offsetY += sliceH
   }
+  pageRef.cursorY += (options.gapAfter ?? 4)
 }
 
 async function mountCaptureIframe(): Promise<{
@@ -735,19 +750,167 @@ function wrapTextLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: nu
   return lines.length ? lines : ['']
 }
 
-function renderPlainTextCanvas(text: string, options: { disclaimer?: boolean } = {}): HTMLCanvasElement {
+function measureDomTextHeight(text: string, widthPx: number, fontSize: number, lineHeight: number): number {
+  const probe = document.createElement('div')
+  probe.style.cssText = [
+    'position:fixed',
+    'left:-24000px',
+    'top:0',
+    `width:${widthPx}px`,
+    `font:${fontSize}px Arial,Helvetica,sans-serif`,
+    `line-height:${lineHeight}`,
+    'white-space:pre-wrap',
+    'word-break:break-word',
+    'visibility:hidden',
+  ].join(';')
+  probe.textContent = text.trim()
+  document.body.appendChild(probe)
+  const height = probe.offsetHeight
+  probe.remove()
+  return height
+}
+
+function stackCanvasesVertically(parts: HTMLCanvasElement[], gapsPx: number[]): HTMLCanvasElement {
+  const width = Math.max(...parts.map((part) => part.width))
+  const gapScaled = (index: number) => (gapsPx[index] ?? 0) * PDF_SCALE
+  const totalHeight = parts.reduce((sum, part, index) => sum + part.height + gapScaled(index), 0)
+
+  const out = document.createElement('canvas')
+  out.width = width
+  out.height = totalHeight
+  const ctx = out.getContext('2d')!
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, width, totalHeight)
+
+  let y = 0
+  parts.forEach((part, index) => {
+    const x = Math.floor((width - part.width) / 2)
+    ctx.drawImage(part, x, y)
+    y += part.height + gapScaled(index)
+  })
+  return out
+}
+
+function syncChartStackFromLive(
+  chart: HTMLElement,
+  legend: HTMLElement | null,
+  footnote: HTMLElement | null,
+  liveRoot: HTMLElement | null,
+) {
+  if (!liveRoot) return
+  if (legend) {
+    const liveLegend = liveRoot.querySelector(':scope > .chart-legend-row')
+    if (liveLegend) legend.innerHTML = liveLegend.outerHTML
+  }
+  if (footnote) {
+    const liveFoot = liveRoot.querySelector(':scope > .chart-footnote, :scope > .hint.chart-footnote')
+    const textEl = footnote.querySelector('.pdf-plain-text')
+    if (liveFoot && textEl) {
+      textEl.textContent = (liveFoot as HTMLElement).innerText.replace(/\n{3,}/g, '\n\n').trim()
+    }
+  }
+  refreshChartSvgsFromLive(liveRoot, chart)
+}
+
+interface ChartStackGroup {
+  header: HTMLElement | null
+  chart: HTMLElement
+  legend: HTMLElement | null
+  footnote: HTMLElement | null
+  title: string | null
+}
+
+interface SingleUnitGroup {
+  unit: HTMLElement
+  title: string | null
+}
+
+type UnitGroup = { kind: 'chart-stack'; stack: ChartStackGroup } | { kind: 'single'; single: SingleUnitGroup }
+
+function buildUnitGroups(units: HTMLElement[], sectionTitle: string | null): UnitGroup[] {
+  const groups: UnitGroup[] = []
+  let titleUsed = false
+  let index = 0
+
+  while (index < units.length) {
+    const unit = units[index]
+
+    if (unit.classList.contains('pdf-chart-header')) {
+      const header = unit
+      index += 1
+      if (units[index]?.classList.contains('pdf-chart-only')) {
+        const chart = units[index]
+        const legend = units[index + 1]?.classList.contains('pdf-legend-capture') ? units[index + 1] : null
+        const footIdx = index + 1 + (legend ? 1 : 0)
+        const footnote = units[footIdx]?.classList.contains('pdf-chart-footnote') ? units[footIdx] : null
+        groups.push({
+          kind: 'chart-stack',
+          stack: {
+            header,
+            chart,
+            legend,
+            footnote,
+            title: !titleUsed ? sectionTitle : null,
+          },
+        })
+        titleUsed = true
+        index = footIdx + (footnote ? 1 : 0)
+        continue
+      }
+      groups.push({ kind: 'single', single: { unit: header, title: !titleUsed ? sectionTitle : null } })
+      titleUsed = true
+      continue
+    }
+
+    if (unit.classList.contains('pdf-chart-only')) {
+      const chart = unit
+      const legend = units[index + 1]?.classList.contains('pdf-legend-capture') ? units[index + 1] : null
+      const footIdx = index + 1 + (legend ? 1 : 0)
+      const footnote = units[footIdx]?.classList.contains('pdf-chart-footnote') ? units[footIdx] : null
+      groups.push({
+        kind: 'chart-stack',
+        stack: {
+          header: null,
+          chart,
+          legend,
+          footnote,
+          title: !titleUsed ? sectionTitle : null,
+        },
+      })
+      titleUsed = true
+      index = footIdx + (footnote ? 1 : 0)
+      continue
+    }
+
+    groups.push({ kind: 'single', single: { unit, title: !titleUsed ? sectionTitle : null } })
+    titleUsed = true
+    index += 1
+  }
+
+  return groups
+}
+
+function renderPlainTextCanvas(
+  text: string,
+  options: { disclaimer?: boolean; topPadding?: number } = {},
+): HTMLCanvasElement {
   const widthPx = PDF_W_PX - 48
   const fontSize = 13
-  const lineHeight = Math.round(fontSize * 1.55)
+  const lineHeightRatio = 1.55
+  const lineHeight = Math.round(fontSize * lineHeightRatio)
   const paddingX = 14
   const paddingY = 12
+  const topPad = options.topPadding ?? 0
   const borderLeft = options.disclaimer ? 3 : 0
   const innerWidth = widthPx - paddingX * 2 - borderLeft - 6
 
   const probe = document.createElement('canvas').getContext('2d')!
   probe.font = `${fontSize}px Arial, Helvetica, sans-serif`
   const lines = wrapTextLines(probe, text.trim(), innerWidth)
-  const heightPx = paddingY * 2 + lines.length * lineHeight + 6
+  const domHeight = measureDomTextHeight(text, innerWidth, fontSize, lineHeightRatio)
+  const linesHeight = lines.length * lineHeight
+  const contentHeight = Math.max(domHeight, linesHeight)
+  const heightPx = topPad + paddingY * 2 + contentHeight + 20
 
   const canvas = document.createElement('canvas')
   canvas.width = widthPx * PDF_SCALE
@@ -759,7 +922,7 @@ function renderPlainTextCanvas(text: string, options: { disclaimer?: boolean } =
     ctx.fillStyle = '#f4faf8'
     ctx.fillRect(0, 0, widthPx, heightPx)
     ctx.fillStyle = '#2d6a4f'
-    ctx.fillRect(0, 0, borderLeft, heightPx)
+    ctx.fillRect(0, topPad, borderLeft, heightPx - topPad)
   } else {
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, widthPx, heightPx)
@@ -769,7 +932,7 @@ function renderPlainTextCanvas(text: string, options: { disclaimer?: boolean } =
   ctx.font = `${fontSize}px Arial, Helvetica, sans-serif`
   const startX = paddingX + borderLeft + 4
   lines.forEach((line, index) => {
-    ctx.fillText(line, startX, paddingY + (index + 1) * lineHeight - 4)
+    ctx.fillText(line, startX, topPad + paddingY + (index + 1) * lineHeight - 4)
   })
   return canvas
 }
@@ -781,7 +944,8 @@ function renderLegendCanvas(unit: HTMLElement): HTMLCanvasElement {
   const itemGap = 6
   const rowGap = 8
   const paddingX = 4
-  const paddingY = 8
+  const paddingTop = 16
+  const paddingBottom = 12
   const widthPx = PDF_W_PX - 48
 
   const probe = document.createElement('canvas').getContext('2d')!
@@ -790,7 +954,7 @@ function renderLegendCanvas(unit: HTMLElement): HTMLCanvasElement {
   type Placement = { label: string; color: string; x: number; y: number }
   const placements: Placement[] = []
   let x = paddingX
-  let y = paddingY + fontSize
+  let y = paddingTop + fontSize
 
   for (const item of items) {
     const swatchEl = item.querySelector('.chart-legend-swatch') as HTMLElement | null
@@ -805,7 +969,7 @@ function renderLegendCanvas(unit: HTMLElement): HTMLCanvasElement {
     x += itemWidth + 18
   }
 
-  const heightPx = y + paddingY + 4
+  const heightPx = y + paddingBottom + 4
   const canvas = document.createElement('canvas')
   canvas.width = widthPx * PDF_SCALE
   canvas.height = heightPx * PDF_SCALE
@@ -871,20 +1035,76 @@ async function captureChartOnlyCanvas(
 
   const width = PDF_W_PX - 48
   const tall = chartWrap.classList.contains('chart-wrap-tall')
-  const height = (tall ? 360 : 320) + 16
+  const chartHeight = tall ? 360 : 320
+  const bottomPad = 20
   chartWrap.style.width = `${width}px`
-  chartWrap.style.height = `${height}px`
-  chartWrap.style.minHeight = `${height}px`
+  chartWrap.style.height = `${chartHeight}px`
+  chartWrap.style.minHeight = `${chartHeight}px`
   chartWrap.style.overflow = 'hidden'
   chartWrap.style.marginBottom = '0'
 
-  const fromSvg = await svgToCanvas(svg, width, height)
-  if (fromSvg) return fromSvg
+  const fromSvg = await svgToCanvas(svg, width, chartHeight)
+  if (fromSvg) {
+    const padded = document.createElement('canvas')
+    padded.width = fromSvg.width
+    padded.height = fromSvg.height + bottomPad * PDF_SCALE
+    const ctx = padded.getContext('2d')!
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, padded.width, padded.height)
+    ctx.drawImage(fromSvg, 0, 0)
+    return padded
+  }
 
   const fallback = document.createElement('div')
   fallback.className = 'pdf-export-wrap pdf-page-block'
   fallback.appendChild(unit.cloneNode(true))
   return captureIsolated(html2canvas, fallback)
+}
+
+async function captureChartStackGroup(
+  stack: ChartStackGroup,
+  liveRoot: HTMLElement | null,
+  html2canvas: Html2CanvasFn,
+): Promise<HTMLCanvasElement | null> {
+  syncChartStackFromLive(stack.chart, stack.legend, stack.footnote, liveRoot)
+
+  const parts: HTMLCanvasElement[] = []
+  const gaps: number[] = []
+
+  if (stack.header) {
+    const wrapped = wrapPdfUnit(stack.header, stack.title)
+    const headerCanvas = await captureIsolated(html2canvas, wrapped)
+    if (headerCanvas) {
+      parts.push(headerCanvas)
+      gaps.push(14)
+    }
+  } else if (stack.title) {
+    const titleWrap = wrapWithTitle(document.createElement('div'), stack.title)
+    const titleCanvas = await captureIsolated(html2canvas, titleWrap)
+    if (titleCanvas) {
+      parts.push(titleCanvas)
+      gaps.push(12)
+    }
+  }
+
+  const chartCanvas = await captureChartOnlyCanvas(stack.chart, liveRoot, html2canvas)
+  if (chartCanvas) {
+    parts.push(chartCanvas)
+    gaps.push(stack.legend || stack.footnote ? PDF_GAP_CHART_TO_LEGEND : 0)
+  }
+
+  if (stack.legend) {
+    parts.push(renderLegendCanvas(stack.legend))
+    gaps.push(stack.footnote ? PDF_GAP_LEGEND_TO_FOOTNOTE : 0)
+  }
+
+  if (stack.footnote) {
+    const text = stack.footnote.querySelector('.pdf-plain-text')?.textContent || ''
+    parts.push(renderPlainTextCanvas(text, { topPadding: 8 }))
+  }
+
+  if (!parts.length) return null
+  return stackCanvasesVertically(parts, gaps)
 }
 
 async function captureUnitToCanvas(
@@ -893,18 +1113,21 @@ async function captureUnitToCanvas(
   html2canvas: Html2CanvasFn,
   title: string | null,
 ): Promise<HTMLCanvasElement | null> {
-  if (unit.classList.contains('pdf-chart-only')) {
-    return captureChartOnlyCanvas(unit, liveRoot, html2canvas)
-  }
-  if (unit.classList.contains('pdf-legend-capture')) {
-    return renderLegendCanvas(unit)
-  }
   if (unit.classList.contains('pdf-chart-footnote') || unit.classList.contains('pdf-methods-disclaimer')) {
     const textEl = unit.querySelector('.pdf-plain-text')
     if (!textEl) return null
+    if (unit.classList.contains('pdf-methods-disclaimer') && liveRoot) {
+      const liveDisclaimer = liveRoot.querySelector(':scope > .model-disclaimer')
+      if (liveDisclaimer) textEl.textContent = (liveDisclaimer as HTMLElement).innerText.trim()
+    }
     return renderPlainTextCanvas(textEl.textContent || '', {
       disclaimer: unit.classList.contains('pdf-methods-disclaimer'),
+      topPadding: unit.classList.contains('pdf-chart-footnote') ? 8 : 0,
     })
+  }
+
+  if (unit.classList.contains('pdf-methods-main')) {
+    unit.style.paddingBottom = '20px'
   }
 
   const wrapped = wrapPdfUnit(unit, title)
@@ -913,6 +1136,7 @@ async function captureUnitToCanvas(
 
 async function captureIsolated(html2canvas: Html2CanvasFn, target: HTMLElement): Promise<HTMLCanvasElement | null> {
   let iframe: HTMLIFrameElement | null = null
+  const restoreLiveUi = suppressLiveUiForPdf()
   try {
     const mounted = await mountCaptureIframe()
     iframe = mounted.iframe
@@ -955,6 +1179,7 @@ async function captureIsolated(html2canvas: Html2CanvasFn, target: HTMLElement):
   } catch {
     return null
   } finally {
+    restoreLiveUi()
     iframe?.remove()
   }
 }
@@ -994,7 +1219,6 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
 
   const scrollY = window.scrollY
   window.scrollTo(0, 0)
-  const restoreLiveUi = suppressLiveUiForPdf()
   try {
   for (const id of ordered) {
     const sec = secMap.get(id)
@@ -1003,7 +1227,7 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
     const liveSection = sec.selector ? document.querySelector(sec.selector) : null
     if (liveSection instanceof HTMLElement) {
       liveSection.scrollIntoView({ block: 'center' })
-      await waitForPaint(sec.selector?.includes('chart') ? 400 : 180)
+      await waitForPaint(sec.selector?.includes('chart') ? 450 : 200)
     }
 
     const block = blockForSection(sec, meta)
@@ -1012,37 +1236,44 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
     if (sec.kind === 'cover') {
       const canvas = await captureWrapped(html2canvas, block)
       if (!canvas) continue
-      appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, { atomic: true })
+      appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, { atomic: true, gapAfter: 8 })
       hasContent = true
       continue
     }
 
-    const units = splitCaptureUnits(block)
-    for (let i = 0; i < units.length; i += 1) {
-      const unit = units[i]
+    const groups = buildUnitGroups(splitCaptureUnits(block), sec.label)
+    for (const group of groups) {
+      if (group.kind === 'chart-stack') {
+        const canvas = await captureChartStackGroup(
+          group.stack,
+          liveSection instanceof HTMLElement ? liveSection : null,
+          html2canvas,
+        )
+        if (!canvas) continue
+        appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, { atomic: false, gapAfter: 12 })
+        hasContent = true
+        continue
+      }
+
+      const { unit, title } = group.single
       const canvas = await captureUnitToCanvas(
         unit,
         liveSection instanceof HTMLElement ? liveSection : null,
         html2canvas,
-        i === 0 ? sec.label : null,
+        title,
       )
       if (!canvas) continue
-      const gapAfter = unit.classList.contains('pdf-chart-only')
-        ? 10
-        : unit.classList.contains('pdf-legend-capture')
-          ? 10
-          : unit.classList.contains('pdf-chart-footnote') || unit.classList.contains('pdf-methods-disclaimer')
-            ? 12
-            : 8
+
+      const isDisclaimer = unit.classList.contains('pdf-methods-disclaimer')
       appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, {
-        atomic: unitIsAtomic(unit),
-        gapAfter,
+        atomic: isDisclaimer ? false : unitIsAtomic(unit),
+        gapAfter: isDisclaimer ? 10 : 8,
+        minSpaceBefore: isDisclaimer ? 32 : undefined,
       })
       hasContent = true
     }
   }
   } finally {
-    restoreLiveUi()
     window.scrollTo(0, scrollY)
   }
 
@@ -1055,7 +1286,9 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
     pdf.setPage(page)
     pdf.setFontSize(8)
     pdf.setTextColor(130)
-    pdf.text(`Daogreen · berry-calculator · ${page}/${pageCount}`, pageW / 2, pageH - 5, { align: 'center' })
+    pdf.text(`Daogreen · berry-calculator · v${PDF_LAYOUT_VERSION} · ${page}/${pageCount}`, pageW / 2, pageH - 5, {
+      align: 'center',
+    })
   }
 
   const datePart = meta.date.replace(/\./g, '-')
