@@ -93,8 +93,8 @@ export function PdfExportDialog({
       <form method="dialog" className="pdf-export-form" onSubmit={handleSubmit}>
         <h2 className="pdf-export-title">Выгрузка в PDF</h2>
         <p className="pdf-export-lead">
-          Выберите разделы отчёта. К каждому графику на сайте добавлено пояснение «что показывает / как считается» — оно
-          попадёт в PDF вместе с блоком.
+          Выберите разделы отчёта. При выгрузке в PDF графики с переключателем сценария автоматически
+          включают <strong>Мин</strong>, <strong>Средний</strong> и <strong>Макс</strong>.
         </p>
 
         <div className="pdf-export-toolbar">

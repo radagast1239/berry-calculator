@@ -424,6 +424,42 @@
 .pdf-staging .result-card,
 .pdf-staging .chart-card,
 .pdf-staging .sources-card {
+  break-inside: avoid;
+}
+
+.pdf-scenario-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.pdf-scenario-block {
+  border: 1px solid var(--dg-border-soft);
+  border-radius: var(--dg-radius-sm);
+  padding: 8px 10px 4px;
+  background: var(--dg-surface-2);
+}
+
+.pdf-scenario-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dg-brand-dark);
+}
+
+.pdf-staging .scenario-cards {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.pdf-staging .scenario-card {
+  break-inside: avoid;
+}
+
+.pdf-staging .result-card,
+.pdf-staging .chart-card,
+.pdf-staging .sources-card {
   box-shadow: none;
   border: 1px solid #e5e7eb;
   border-radius: 10px;

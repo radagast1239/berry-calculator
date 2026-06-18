@@ -67,7 +67,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
   {
     id: 'chart-farm-monthly',
     label: 'Помесячный сбор с фермы',
-    description: 'Кг товарной ягоды по месяцам: КСД равномерно, НСД по волнам.',
+    description: 'Кг товарной ягоды по месяцам для сценариев Мин, Средний и Макс (в PDF — все три).',
     group: 'charts',
     selector: '#pdf-sec-chart-farm-monthly',
   },
@@ -90,7 +90,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
   {
     id: 'chart-dn-calendar',
     label: 'Календарь НСД по волнам',
-    description: 'Распределение урожая НСД по месяцам календарного года.',
+    description: 'Распределение урожая НСД по месяцам — в PDF для Мин, Средний и Макс.',
     group: 'charts',
     selector: '#pdf-sec-chart-dn-calendar',
     crop: 'DN',
@@ -99,7 +99,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
   {
     id: 'chart-dn-profile',
     label: 'Профиль волны НСД',
-    description: 'Форма сбора внутри цикла: пики волн или ручной профиль.',
+    description: 'Форма сбора внутри цикла — в PDF для всех сценариев.',
     group: 'charts',
     selector: '#pdf-sec-chart-dn-profile',
     crop: 'DN',
@@ -152,8 +152,8 @@ export const PDF_PRESETS = {
 }
 
 export const PDF_PRESET_HINTS: Record<keyof typeof PDF_PRESETS, string> = {
-  brief: 'Титул, формулы, результаты и два главных графика.',
-  client: 'Как «Краткий» — без сложной аналитики.',
+  brief: 'Титул, формулы, результаты (Мин/Средний/Макс) и графики по всем сценариям.',
+  client: 'Как «Краткий» — в PDF все три сценария на графиках.',
   investor: 'Сорта, экономика, чувствительность — для обсуждения проекта.',
   full: 'Все разделы, включая волны НСД и неопределённость.',
 }
@@ -242,6 +242,11 @@ function prepareCloneForPdf(root: HTMLElement) {
     const node = el as HTMLElement
     node.style.height = `${node.offsetHeight || 280}px`
     node.style.minHeight = `${node.offsetHeight || 280}px`
+  })
+  root.querySelectorAll('.scenario-cards').forEach((el) => {
+    const node = el as HTMLElement
+    node.style.gridTemplateColumns = '1fr'
+    node.style.gap = '8px'
   })
 }
 
