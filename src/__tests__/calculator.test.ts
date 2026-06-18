@@ -150,11 +150,11 @@ describe('buildDnMonthlyCalendar', () => {
       { ...DEFAULT_FARM, cropType: 'DN', density: 20, farmAreaM2: 200 },
       { ...DEFAULT_SORT_PARAMS, ...AGRONOMIST_PURONEN_PRESET },
     )
-    const cal = buildDnMonthlyCalendar(state, 'max')
+    const cal = buildDnMonthlyCalendar(state, 'avg')
     expect(cal.every((value) => value > 0.01)).toBe(true)
     const min = Math.min(...cal)
     const max = Math.max(...cal)
-    expect(max / min).toBeGreaterThan(1.15)
+    expect(max / min).toBeGreaterThan(1.2)
   })
 })
 
