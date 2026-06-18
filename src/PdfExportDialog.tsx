@@ -98,6 +98,9 @@ export function PdfExportDialog({
         </p>
 
         <div className="pdf-export-toolbar">
+          <button type="button" onClick={() => applyPreset('scenarios')}>
+            Мин/Средн/Макс
+          </button>
           <button type="button" onClick={() => applyPreset('brief')}>
             Краткий
           </button>

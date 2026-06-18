@@ -15,6 +15,7 @@ import {
 import './App.css'
 import { CHART } from './chartColors'
 import { CalculationSummary } from './CalculationSummary'
+import { ParametersSummary } from './ParametersSummary'
 import { ChartExplainBlock } from './ChartExplainBlock'
 import { ModelCaveatsBlock } from './ModelCaveatsBlock'
 import { CROP_RESULT_CAVEATS, MODEL_DISCLAIMER, MODEL_LIMITATIONS_BULLETS } from './modelCaveats'
@@ -1073,6 +1074,7 @@ function App() {
 
   const runPdfExport = async (sectionIds: string[]) => {
     setPdfExporting(true)
+    const prevScenario = calendarScenario
     await waitForPdfPaint(650)
     const needCompare = sectionIds.some((id) => id === 'sorts-compare' || id === 'sorts-econ')
     const needEcon = sectionIds.includes('econ')
@@ -1084,35 +1086,45 @@ function App() {
 
     try {
       const date = new Date().toLocaleDateString('ru-RU')
-      await exportSectionsToPdf(sectionIds, {
-        title: 'Калькулятор урожайности клубники · Daogreen',
-        subtitle: 'Daogreen — проектирование и запуск вертикальных ферм',
-        date,
-        lines: [
-          { label: 'Культура', value: cropTypeLabel },
-          {
-            label: 'База расчёта',
-            value: 'полезная посевная площадь',
+      await exportSectionsToPdf(
+        sectionIds,
+        {
+          title: 'Калькулятор урожайности клубники · Daogreen',
+          subtitle: 'Daogreen — проектирование и запуск вертикальных ферм',
+          date,
+          lines: [
+            { label: 'Культура', value: cropTypeLabel },
+            {
+              label: 'База расчёта',
+              value: 'полезная посевная площадь',
+            },
+            { label: 'Сорт', value: activeSort?.name ?? '—' },
+            { label: 'Плотность', value: `${state.density} раст/м²` },
+            { label: 'Площадь фермы', value: `${state.farmAreaM2} м²` },
+            {
+              label: 'КСД (мин / сред / макс)',
+              value: `${fmtSqmMoYear(sdResult.min.marketM2PerMonth, sdResult.min.marketM2PerYear)} · ${fmtSqmMoYear(sdResult.avg.marketM2PerMonth, sdResult.avg.marketM2PerYear)} · ${fmtSqmMoYear(sdResult.max.marketM2PerMonth, sdResult.max.marketM2PerYear)} кг/м²·мес · кг/м²/год`,
+            },
+            {
+              label: 'НСД (мин / сред / макс)',
+              value: `${fmtSqmMoYear(dnResult.min.marketM2PerMonth, dnResult.min.marketM2PerYear)} · ${fmtSqmMoYear(dnResult.avg.marketM2PerMonth, dnResult.avg.marketM2PerYear)} · ${fmtSqmMoYear(dnResult.max.marketM2PerMonth, dnResult.max.marketM2PerYear)} кг/м²·мес · кг/м²/год`,
+            },
+          ],
+        },
+        {
+          onBeforeSectionCapture: async (_sectionId, scenario) => {
+            if (scenario) setCalendarScenario(scenario)
+            await waitForPdfPaint(scenario ? 550 : 300)
           },
-          { label: 'Сорт', value: activeSort?.name ?? '—' },
-          { label: 'Плотность', value: `${state.density} раст/м²` },
-          { label: 'Площадь фермы', value: `${state.farmAreaM2} м²` },
-          {
-            label: 'КСД (средний)',
-            value: `${fmtSqmMoYear(sdResult.avg.marketM2PerMonth, sdResult.avg.marketM2PerYear)} кг/м²·мес · кг/м²/год`,
-          },
-          {
-            label: 'НСД (средний)',
-            value: `${fmtSqmMoYear(dnResult.avg.marketM2PerMonth, dnResult.avg.marketM2PerYear)} кг/м²·мес · кг/м²/год`,
-          },
-        ],
-      })
+        },
+      )
       setPdfDialogOpen(false)
       showToast(`PDF сохранён (макет v${PDF_LAYOUT_VERSION}).`)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Не удалось сформировать PDF.'
       showToast(message)
     } finally {
+      setCalendarScenario(prevScenario)
       setCompareSortsOpen(prevCompare)
       setEconOpen(prevEcon)
       setPdfExporting(false)
@@ -1970,6 +1982,8 @@ function App() {
             Расчёт для сорта: <strong>{activeSort?.name ?? '—'}</strong>
           </p>
 
+          <ParametersSummary state={state} cropType={state.cropType} />
+
           <CalculationSummary state={state} sdResult={sdResult} dnResult={dnResult} />
 
           {!clientMode && (
@@ -1982,12 +1996,22 @@ function App() {
 
           {(state.cropType === 'SD' || state.cropType === 'both') && (
             <div id="pdf-sec-results-sd">
-              <ResultsTable crop="SD" title="Результаты КСД" result={sdResult} clientMode={clientMode} />
+              <ResultsTable
+                crop="SD"
+                title="Результаты КСД"
+                result={sdResult}
+                clientMode={clientMode && !pdfExporting}
+              />
             </div>
           )}
           {(state.cropType === 'DN' || state.cropType === 'both') && (
             <div id="pdf-sec-results-dn">
-              <ResultsTable crop="DN" title="Результаты НСД" result={dnResult} clientMode={clientMode} />
+              <ResultsTable
+                crop="DN"
+                title="Результаты НСД"
+                result={dnResult}
+                clientMode={clientMode && !pdfExporting}
+              />
             </div>
           )}
 

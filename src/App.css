@@ -1240,6 +1240,47 @@ button.primary:hover {
   line-height: 1.35;
 }
 
+.params-summary-card .params-single-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px 16px;
+  margin-bottom: 14px;
+}
+
+.params-single-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.params-single-label {
+  font-size: 12px;
+  color: var(--dg-text-muted);
+}
+
+.params-single-value {
+  font-weight: 600;
+}
+
+.params-table-block {
+  margin-top: 12px;
+}
+
+.params-table-block h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.params-triple-table th,
+.params-triple-table td {
+  font-size: 13px;
+}
+
+.pdf-scenario-badge {
+  font-weight: 600;
+  color: var(--dg-brand);
+}
+
 .agronomist-preset-bar {
   display: flex;
   flex-direction: column;

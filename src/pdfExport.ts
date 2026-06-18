@@ -1,5 +1,12 @@
-import type { CropType } from './types'
+import type { CropType, Scenario } from './types'
 import { parseProfileChartSpec, renderProfileLineChartCanvas } from './pdfProfileChart'
+
+const PDF_SCENARIOS: Scenario[] = ['min', 'avg', 'max']
+const PDF_SCENARIO_LABELS: Record<Scenario, string> = {
+  min: 'Мин',
+  avg: 'Средний',
+  max: 'Макс',
+}
 
 type Html2CanvasFn = typeof import('html2canvas')['default']
 type JsPdfCtor = typeof import('jspdf')['jsPDF']
@@ -14,7 +21,7 @@ const PDF_W_PX = 794
 const PDF_SCALE = 2
 const PDF_MARGIN_MM = 12
 /** Меняйте при правках вёрстки PDF — видно в подвале файла. */
-export const PDF_LAYOUT_VERSION = 8
+export const PDF_LAYOUT_VERSION = 9
 
 export type PdfSectionGroup = 'general' | 'results' | 'charts'
 
@@ -27,6 +34,8 @@ export interface PdfSectionDef {
   kind?: 'cover'
   crop?: 'SD' | 'DN'
   advanced?: boolean
+  /** В PDF — отдельный снимок для Мин, Средний и Макс. */
+  scenarioCapture?: boolean
 }
 
 export const PDF_SECTIONS: PdfSectionDef[] = [
@@ -36,6 +45,13 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
     description: 'Название, дата, ключевые параметры и итоговый урожай КСД/НСД.',
     group: 'general',
     kind: 'cover',
+  },
+  {
+    id: 'inputs',
+    label: 'Параметры Мин/Средн/Макс',
+    description: 'Таблица всех сценарных диапазонов: выход с куста, циклы, волны, товарность.',
+    group: 'general',
+    selector: '#pdf-sec-inputs',
   },
   {
     id: 'methods',
@@ -80,6 +96,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
     description: 'Кг товарной ягоды по месяцам: КСД по недельному профилю, НСД по волнам.',
     group: 'charts',
     selector: '#pdf-sec-chart-farm-monthly',
+    scenarioCapture: true,
   },
   {
     id: 'chart-sensitivity',
@@ -105,6 +122,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
     selector: '#pdf-sec-chart-sd-profile',
     crop: 'SD',
     advanced: true,
+    scenarioCapture: true,
   },
   {
     id: 'chart-dn-calendar',
@@ -114,6 +132,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
     selector: '#pdf-sec-chart-dn-calendar',
     crop: 'DN',
     advanced: true,
+    scenarioCapture: true,
   },
   {
     id: 'chart-dn-profile',
@@ -123,6 +142,7 @@ export const PDF_SECTIONS: PdfSectionDef[] = [
     selector: '#pdf-sec-chart-dn-profile',
     crop: 'DN',
     advanced: true,
+    scenarioCapture: true,
   },
   {
     id: 'sorts-compare',
@@ -154,6 +174,18 @@ export const PDF_GROUP_LABELS: Record<PdfSectionGroup, string> = {
 }
 
 export const PDF_PRESETS = {
+  scenarios: [
+    'cover',
+    'inputs',
+    'results-sd',
+    'results-dn',
+    'chart-compare',
+    'chart-farm-monthly',
+    'chart-sd-profile',
+    'chart-dn-calendar',
+    'chart-dn-profile',
+    'chart-uncertainty',
+  ],
   client: ['cover', 'methods', 'model-limits', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
   brief: ['cover', 'methods', 'model-limits', 'results-sd', 'results-dn', 'chart-compare', 'chart-farm-monthly'],
   investor: [
@@ -172,6 +204,7 @@ export const PDF_PRESETS = {
 }
 
 export const PDF_PRESET_HINTS: Record<keyof typeof PDF_PRESETS, string> = {
+  scenarios: 'Все Мин/Средн/Макс: параметры, таблицы результатов и графики по каждому сценарию.',
   brief: 'Титул, формулы, результаты и два главных графика.',
   client: 'Как «Краткий» — без сложной аналитики.',
   investor: 'Сорта, экономика, чувствительность — для обсуждения проекта.',
@@ -196,16 +229,19 @@ export interface PdfExportMeta {
   lines: { label: string; value: string }[]
 }
 
+export interface PdfExportHooks {
+  onBeforeSectionCapture?: (sectionId: string, scenario?: Scenario) => Promise<void>
+}
+
 function cropVisible(cropType: CropType, crop?: 'SD' | 'DN'): boolean {
   if (!crop) return true
   if (cropType === 'both') return true
   return cropType === crop
 }
 
-export function getAvailablePdfSections(cropType: CropType, clientMode: boolean): PdfSectionDef[] {
+export function getAvailablePdfSections(cropType: CropType, _clientMode: boolean): PdfSectionDef[] {
   return PDF_SECTIONS.filter((sec) => {
     if (!cropVisible(cropType, sec.crop)) return false
-    if (clientMode && sec.advanced) return false
     if (sec.selector && !document.querySelector(sec.selector)) return false
     return true
   })
@@ -213,7 +249,7 @@ export function getAvailablePdfSections(cropType: CropType, clientMode: boolean)
 
 export function defaultPdfSelection(cropType: CropType, clientMode: boolean): string[] {
   const available = new Set(getAvailablePdfSections(cropType, clientMode).map((s) => s.id))
-  const preset = clientMode ? PDF_PRESETS.client : PDF_PRESETS.brief
+  const preset = clientMode ? PDF_PRESETS.client : PDF_PRESETS.scenarios
   return preset.filter((id) => available.has(id))
 }
 
@@ -389,6 +425,15 @@ async function cloneSectionForPdf(source: HTMLElement): Promise<HTMLElement> {
   return clone
 }
 
+function addScenarioBadge(block: HTMLElement, scenario: Scenario) {
+  const h3 = block.querySelector('h3')
+  if (!h3) return
+  const badge = document.createElement('span')
+  badge.className = 'pdf-scenario-badge'
+  badge.textContent = ` · ${PDF_SCENARIO_LABELS[scenario]}`
+  h3.appendChild(badge)
+}
+
 function buildCover(meta: PdfExportMeta): HTMLElement {
   const wrap = document.createElement('div')
   wrap.className = 'pdf-page-block pdf-cover-block'
@@ -543,7 +588,11 @@ async function captureStagingBlock(
   }
 }
 
-export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExportMeta): Promise<void> {
+export async function exportSectionsToPdf(
+  selectedIds: string[],
+  meta: PdfExportMeta,
+  hooks?: PdfExportHooks,
+): Promise<void> {
   const { html2canvas, jsPDF } = await loadPdfLibs()
   const ordered = sortSectionIds(selectedIds)
   if (!ordered.length) throw new Error('Выберите хотя бы один раздел.')
@@ -563,6 +612,7 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
       if (!sec) continue
 
       if (sec.kind === 'cover') {
+        await hooks?.onBeforeSectionCapture?.(id)
         const canvas = await captureStagingBlock(html2canvas, buildCover(meta))
         if (!canvas) continue
         appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, { atomic: true, gapAfter: 8 })
@@ -574,21 +624,29 @@ export async function exportSectionsToPdf(selectedIds: string[], meta: PdfExport
       const liveSection = document.querySelector(sec.selector)
       if (!(liveSection instanceof HTMLElement)) continue
 
-      liveSection.scrollIntoView({ block: 'center' })
-      const isProfileChart =
-        sec.id === 'chart-sd-profile' || sec.id === 'chart-dn-profile'
-      await waitForPaint(isProfileChart ? 750 : sec.group === 'charts' ? 550 : 280)
+      const scenarios = sec.scenarioCapture ? PDF_SCENARIOS : [undefined]
+      for (const scenario of scenarios) {
+        await hooks?.onBeforeSectionCapture?.(id, scenario)
 
-      const block = await cloneSectionForPdf(liveSection)
-      const canvas = await captureStagingBlock(html2canvas, block)
-      if (!canvas) continue
+        liveSection.scrollIntoView({ block: 'center' })
+        const isProfileChart =
+          sec.id === 'chart-sd-profile' || sec.id === 'chart-dn-profile'
+        await waitForPaint(
+          scenario && isProfileChart ? 800 : scenario ? 650 : isProfileChart ? 750 : sec.group === 'charts' ? 550 : 280,
+        )
 
-      const hasChart = Boolean(liveSection.querySelector('.chart-wrap'))
-      appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, {
-        atomic: hasChart,
-        gapAfter: 10,
-      })
-      hasContent = true
+        const block = await cloneSectionForPdf(liveSection)
+        if (scenario) addScenarioBadge(block, scenario)
+        const canvas = await captureStagingBlock(html2canvas, block)
+        if (!canvas) continue
+
+        const hasChart = Boolean(liveSection.querySelector('.chart-wrap'))
+        appendCanvasToPdf(pdf, canvas, margin, contentW, pageRef, {
+          atomic: hasChart,
+          gapAfter: 10,
+        })
+        hasContent = true
+      }
     }
   } finally {
     window.scrollTo(0, scrollY)
